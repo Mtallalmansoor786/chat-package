@@ -60,7 +60,7 @@ Want to make it installable via `composer require`? See:
 
 ---
 
-## Installation (Current Project)
+## Installation (Existing Project)
 
 ### Step 1: Install via Composer
 
@@ -75,7 +75,7 @@ Add the package to your Laravel project's `composer.json`:
         }
     ],
     "require": {
-        "chat-package/chat-package": "*"
+        "mtallalmansoor786/chat-package": "*"
     }
 }
 ```
