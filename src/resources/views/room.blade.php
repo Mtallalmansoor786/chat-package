@@ -99,26 +99,53 @@
 <!-- Pusher and Chat Scripts -->
 <script src="https://js.pusher.com/8.2.0/pusher.min.js"></script>
 <script>
-    // Initialize Pusher
+    // Track sent message IDs to avoid duplicates
+    const sentMessageIds = new Set();
+    const currentUserId = {{ Auth::id() }};
+    
+    // Initialize Pusher with authentication
     const pusher = new Pusher('{{ config('chat-package.pusher.key') }}', {
         cluster: '{{ config('chat-package.pusher.cluster') }}',
-        encrypted: true
+        encrypted: true,
+        authEndpoint: '/broadcasting/auth',
+        auth: {
+            headers: {
+                'X-CSRF-TOKEN': '{{ csrf_token() }}'
+            }
+        }
     });
 
+    // Subscribe to presence channel
     const channel = pusher.subscribe('presence-chat-room.{{ $chatRoom->id }}');
+    
+    // Handle subscription events
+    channel.bind('pusher:subscription_succeeded', function(members) {
+        console.log('✅ Successfully subscribed to channel');
+    });
+    
+    channel.bind('pusher:subscription_error', function(status) {
+        console.error('❌ Subscription error:', status);
+        alert('Failed to connect to chat. Please refresh the page.');
+    });
 
-    // Handle new messages
-    channel.bind('message.sent', function(data) {
+    // Function to add message to container
+    function addMessageToContainer(data, isOwnMessage = false) {
+        // Prevent duplicate messages
+        if (sentMessageIds.has(data.id)) {
+            return;
+        }
+        sentMessageIds.add(data.id);
+        
         const messagesContainer = document.getElementById('messagesContainer');
-        const isOwnMessage = data.user_id === {{ Auth::id() }};
+        if (!messagesContainer) return;
         
         const messageHtml = `
-            <div class="message-item mb-3 ${isOwnMessage ? 'text-end' : ''}">
+            <div class="message-item mb-3 ${isOwnMessage ? 'text-end' : ''}" data-message-id="${data.id}">
                 <div class="d-inline-block ${isOwnMessage ? 'bg-primary text-white' : 'bg-light'} rounded p-2" style="max-width: 70%;">
-                    ${!isOwnMessage ? `<div class="fw-bold small mb-1">${data.user.name}</div>` : ''}
-                    <div class="message-text">${data.message}</div>
+                    ${!isOwnMessage ? `<div class="fw-bold small mb-1">${escapeHtml(data.user.name)}</div>` : ''}
+                    <div class="message-text">${escapeHtml(data.message)}</div>
                     <div class="small ${isOwnMessage ? 'text-white-50' : 'text-muted'} mt-1">
-                        ${new Date(data.created_at).toLocaleTimeString('en-US', {hour: '2-digit', minute:'2-digit'})}
+                        ${formatTime(data.created_at)}
                     </div>
                 </div>
             </div>
@@ -126,14 +153,36 @@
         
         messagesContainer.insertAdjacentHTML('beforeend', messageHtml);
         messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    }
+    
+    // Helper function to escape HTML
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+    
+    // Helper function to format time
+    function formatTime(dateString) {
+        const date = new Date(dateString);
+        return date.toLocaleTimeString('en-US', {hour: '2-digit', minute:'2-digit'});
+    }
+
+    // Handle new messages from broadcast
+    channel.bind('message.sent', function(data) {
+        console.log('📨 Message received:', data);
+        const isOwnMessage = data.user_id === currentUserId;
+        addMessageToContainer(data, isOwnMessage);
     });
 
     // Handle member added/removed
     channel.bind('pusher:member_added', function(member) {
+        console.log('👤 Member added:', member);
         updatePeerStatus(member.id, 'online');
     });
 
     channel.bind('pusher:member_removed', function(member) {
+        console.log('👤 Member removed:', member);
         updatePeerStatus(member.id, 'offline');
     });
 
@@ -150,33 +199,74 @@
         e.preventDefault();
         
         const messageInput = document.getElementById('messageInput');
+        const submitButton = this.querySelector('button[type="submit"]');
         const message = messageInput.value.trim();
         
         if (!message) return;
+        
+        // Disable form during submission
+        messageInput.disabled = true;
+        submitButton.disabled = true;
+        submitButton.innerHTML = '<i class="bi bi-hourglass-split"></i> Sending...';
 
         fetch('{{ route('chat.message.send', $chatRoom->id) }}', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                'Accept': 'application/json'
             },
             body: JSON.stringify({ message: message })
         })
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) {
+                return response.json().then(err => Promise.reject(err));
+            }
+            return response.json();
+        })
         .then(data => {
-            if (data.success) {
+            console.log('✅ Message sent successfully:', data);
+            
+            if (data.success && data.message) {
+                // Add message immediately (optimistic update)
+                const messageData = {
+                    id: data.message.id,
+                    user_id: data.message.user_id,
+                    message: data.message.message,
+                    created_at: data.message.created_at,
+                    user: {
+                        id: data.message.user?.id || currentUserId,
+                        name: data.message.user?.name || '{{ Auth::user()->name }}',
+                        email: data.message.user?.email || '{{ Auth::user()->email }}'
+                    }
+                };
+                
+                // Add message to container immediately
+                addMessageToContainer(messageData, true);
+                
+                // Clear input
                 messageInput.value = '';
             }
         })
         .catch(error => {
-            console.error('Error:', error);
+            console.error('❌ Error sending message:', error);
+            alert(error.message || 'Failed to send message. Please try again.');
+        })
+        .finally(() => {
+            // Re-enable form
+            messageInput.disabled = false;
+            submitButton.disabled = false;
+            submitButton.innerHTML = '<i class="bi bi-send"></i> Send';
+            messageInput.focus();
         });
     });
 
     // Auto-scroll to bottom on load
     window.addEventListener('load', function() {
         const messagesContainer = document.getElementById('messagesContainer');
-        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        if (messagesContainer) {
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
     });
 </script>
 

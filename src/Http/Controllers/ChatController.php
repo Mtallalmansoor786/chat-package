@@ -58,7 +58,19 @@ class ChatController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => $message,
+            'message' => [
+                'id' => $message->id,
+                'chat_room_id' => $message->chat_room_id,
+                'user_id' => $message->user_id,
+                'message' => $message->message,
+                'type' => $message->type,
+                'created_at' => $message->created_at->toDateTimeString(),
+                'user' => [
+                    'id' => $message->user->id,
+                    'name' => $message->user->name,
+                    'email' => $message->user->email,
+                ],
+            ],
         ]);
     }
 
