@@ -23,8 +23,10 @@ class ChatController extends Controller
     public function index(): View
     {
         $chatRooms = $this->chatService->getUserChatRooms(Auth::id());
+        $chatRoom = null;
+        $messages = collect([]);
 
-        return view('chat-package::index', compact('chatRooms'));
+        return view('chat-package::room', compact('chatRoom', 'messages', 'chatRooms'));
     }
 
     /**
@@ -34,8 +36,9 @@ class ChatController extends Controller
     {
         $chatRoom = $this->chatService->getChatRoom($roomId, Auth::id());
         $messages = $this->chatService->getMessages($roomId, Auth::id());
+        $chatRooms = $this->chatService->getUserChatRooms(Auth::id());
 
-        return view('chat-package::room', compact('chatRoom', 'messages'));
+        return view('chat-package::room', compact('chatRoom', 'messages', 'chatRooms'));
     }
 
     /**
