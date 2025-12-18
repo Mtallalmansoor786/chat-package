@@ -7,7 +7,7 @@
 The package is already configured in your `composer.json`. Just run:
 
 ```bash
-composer require chat-package/chat-package
+composer require mtallalmansoor786/chat-package
 ```
 
 ### 2. Configure Pusher
