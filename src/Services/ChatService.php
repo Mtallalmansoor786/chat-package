@@ -9,6 +9,7 @@ use ChatPackage\ChatPackage\Repositories\Contracts\MessageRepositoryInterface;
 use ChatPackage\ChatPackage\Services\Contracts\ChatServiceInterface;
 use ChatPackage\ChatPackage\Models\ChatRoom;
 use ChatPackage\ChatPackage\Models\Message;
+use ChatPackage\ChatPackage\Models\MessageRead;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection;
 
@@ -125,6 +126,72 @@ class ChatService implements ChatServiceInterface
         }
 
         return true;
+    }
+
+    /**
+     * Get unread message counts for chat rooms.
+     * Counts messages from other users that haven't been read by the current user.
+     */
+    public function getUnreadCounts(int $userId, Collection $chatRooms): array
+    {
+        $unreadCounts = [];
+
+        foreach ($chatRooms as $room) {
+            // Get all message IDs that have been read by this user
+            $readMessageIds = MessageRead::where('user_id', $userId)
+                ->pluck('message_id')
+                ->toArray();
+
+            // Count unread messages (from other users, not read by current user)
+            $unreadCounts[$room->id] = Message::where('chat_room_id', $room->id)
+                ->where('user_id', '!=', $userId)
+                ->whereNotIn('id', $readMessageIds)
+                ->count();
+        }
+
+        return $unreadCounts;
+    }
+
+    /**
+     * Mark all messages in a room as read for a user.
+     */
+    public function markMessagesAsRead(int $roomId, int $userId): void
+    {
+        // Get all unread messages in this room (from other users)
+        $unreadMessages = Message::where('chat_room_id', $roomId)
+            ->where('user_id', '!=', $userId)
+            ->whereDoesntHave('reads', function ($query) use ($userId) {
+                $query->where('user_id', $userId);
+            })
+            ->get();
+
+        // Mark them as read
+        foreach ($unreadMessages as $message) {
+            MessageRead::firstOrCreate([
+                'message_id' => $message->id,
+                'user_id' => $userId,
+            ], [
+                'read_at' => now(),
+            ]);
+        }
+    }
+
+    /**
+     * Get the first unread message ID in a room for a user.
+     */
+    public function getFirstUnreadMessageId(int $roomId, int $userId): ?int
+    {
+        $readMessageIds = MessageRead::where('user_id', $userId)
+            ->pluck('message_id')
+            ->toArray();
+
+        $firstUnread = Message::where('chat_room_id', $roomId)
+            ->where('user_id', '!=', $userId)
+            ->whereNotIn('id', $readMessageIds)
+            ->orderBy('created_at', 'asc')
+            ->first();
+
+        return $firstUnread ? $firstUnread->id : null;
     }
 }
 

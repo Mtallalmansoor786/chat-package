@@ -25,8 +25,10 @@ class ChatController extends Controller
         $chatRooms = $this->chatService->getUserChatRooms(Auth::id());
         $chatRoom = null;
         $messages = collect([]);
+        $unreadCounts = $this->chatService->getUnreadCounts(Auth::id(), $chatRooms);
+        $firstUnreadMessageId = null;
 
-        return view('chat-package::room', compact('chatRoom', 'messages', 'chatRooms'));
+        return view('chat-package::room', compact('chatRoom', 'messages', 'chatRooms', 'unreadCounts', 'firstUnreadMessageId'));
     }
 
     /**
@@ -34,11 +36,20 @@ class ChatController extends Controller
      */
     public function show(int $roomId): View
     {
-        $chatRoom = $this->chatService->getChatRoom($roomId, Auth::id());
-        $messages = $this->chatService->getMessages($roomId, Auth::id());
-        $chatRooms = $this->chatService->getUserChatRooms(Auth::id());
+        $userId = Auth::id();
+        $chatRoom = $this->chatService->getChatRoom($roomId, $userId);
+        $messages = $this->chatService->getMessages($roomId, $userId);
+        
+        // Get first unread message ID for scrolling BEFORE marking as read
+        $firstUnreadMessageId = $this->chatService->getFirstUnreadMessageId($roomId, $userId);
+        
+        // Mark all messages in this room as read
+        $this->chatService->markMessagesAsRead($roomId, $userId);
+        
+        $chatRooms = $this->chatService->getUserChatRooms($userId);
+        $unreadCounts = $this->chatService->getUnreadCounts($userId, $chatRooms);
 
-        return view('chat-package::room', compact('chatRoom', 'messages', 'chatRooms'));
+        return view('chat-package::room', compact('chatRoom', 'messages', 'chatRooms', 'unreadCounts', 'firstUnreadMessageId'));
     }
 
     /**

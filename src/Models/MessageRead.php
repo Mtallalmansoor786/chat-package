@@ -5,7 +5,7 @@ namespace ChatPackage\ChatPackage\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-class Message extends Model
+class MessageRead extends Model
 {
     /**
      * The connection name for the model.
@@ -13,51 +13,35 @@ class Message extends Model
      */
     protected $connection = null;
 
-    protected $table = 'messages';
+    protected $table = 'message_reads';
 
     protected $fillable = [
-        'chat_room_id',
+        'message_id',
         'user_id',
-        'message',
-        'type',
+        'read_at',
     ];
 
     protected $casts = [
+        'read_at' => 'datetime',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];
 
     /**
-     * Get the chat room that owns the message.
+     * Get the message that was read.
      */
-    public function chatRoom(): BelongsTo
+    public function message(): BelongsTo
     {
-        return $this->belongsTo(ChatRoom::class);
+        return $this->belongsTo(Message::class);
     }
 
     /**
-     * Get the user that sent the message.
+     * Get the user who read the message.
      */
     public function user()
     {
         $userModel = config('auth.providers.users.model', \App\Models\User::class);
         return $this->belongsTo($userModel);
-    }
-
-    /**
-     * Get the read records for this message.
-     */
-    public function reads()
-    {
-        return $this->hasMany(MessageRead::class);
-    }
-
-    /**
-     * Check if message is read by a specific user.
-     */
-    public function isReadBy(int $userId): bool
-    {
-        return $this->reads()->where('user_id', $userId)->exists();
     }
 }
 

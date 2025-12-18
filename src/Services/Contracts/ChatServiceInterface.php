@@ -43,5 +43,20 @@ interface ChatServiceInterface
      * Verify user has access to chat room.
      */
     public function verifyUserAccess(int $roomId, int $userId): bool;
+
+    /**
+     * Get unread message counts for chat rooms.
+     */
+    public function getUnreadCounts(int $userId, Collection $chatRooms): array;
+
+    /**
+     * Mark all messages in a room as read for a user.
+     */
+    public function markMessagesAsRead(int $roomId, int $userId): void;
+
+    /**
+     * Get the first unread message ID in a room for a user.
+     */
+    public function getFirstUnreadMessageId(int $roomId, int $userId): ?int;
 }
 

@@ -34,9 +34,6 @@
                                             <div class="chat-avatar-circle">
                                                 <span class="chat-avatar-text">{{ strtoupper(substr($room->name, 0, 2)) }}</span>
                                             </div>
-                                            @if($room->messages->count() > 0)
-                                                <span class="chat-unread-indicator"></span>
-                                            @endif
                                         </div>
                                         
                                         <!-- Chat Info -->
@@ -45,9 +42,14 @@
                                                 <h6 class="mb-0 fw-semibold chat-room-name">
                                                     {{ $room->name }}
                                                 </h6>
-                                                <small class="chat-time">
-                                                    {{ $room->updated_at->diffForHumans() }}
-                                                </small>
+                                                <div class="d-flex align-items-center gap-2">
+                                                    @if(isset($unreadCounts[$room->id]) && $unreadCounts[$room->id] > 0)
+                                                        <span class="unread-badge">{{ $unreadCounts[$room->id] > 99 ? '99+' : $unreadCounts[$room->id] }}</span>
+                                                    @endif
+                                                    <small class="chat-time">
+                                                        {{ $room->updated_at->diffForHumans() }}
+                                                    </small>
+                                                </div>
                                             </div>
                                             
                                             @if($room->messages->count() > 0)
@@ -107,8 +109,25 @@
                     <!-- Messages Container -->
                     <div class="chat-messages-body">
                         <div id="messagesContainer" class="messages-container">
+                            @php
+                                $firstUnreadFound = false;
+                            @endphp
                             @foreach($messages->reverse() as $message)
-                                <div class="message-wrapper {{ $message->user_id === Auth::id() ? 'message-own' : 'message-other' }}">
+                                @php
+                                    $isUnread = $message->user_id !== Auth::id() && !$message->isReadBy(Auth::id());
+                                    if ($isUnread && !$firstUnreadFound && isset($firstUnreadMessageId) && $message->id == $firstUnreadMessageId) {
+                                        $firstUnreadFound = true;
+                                    }
+                                @endphp
+                                <div class="message-wrapper {{ $message->user_id === Auth::id() ? 'message-own' : 'message-other' }} {{ $isUnread ? 'message-unread' : '' }}" 
+                                     data-message-id="{{ $message->id }}"
+                                     @if($firstUnreadFound && !isset($scrollDone)) id="first-unread-message" @php $scrollDone = true; @endphp @endif>
+                                    @if($firstUnreadFound && !isset($unreadDividerShown))
+                                        <div class="unread-divider">
+                                            <span>Unread messages</span>
+                                        </div>
+                                        @php $unreadDividerShown = true; @endphp
+                                    @endif
                                     <div class="message-bubble {{ $message->user_id === Auth::id() ? 'message-bubble-own' : 'message-bubble-other' }}">
                                         @if($message->user_id !== Auth::id())
                                             <div class="message-sender">
@@ -427,11 +446,18 @@
     }
     @endif
 
-    // Auto-scroll to bottom on load
+    // Auto-scroll to first unread message or bottom on load
     window.addEventListener('load', function() {
         const messagesContainer = document.getElementById('messagesContainer');
         if (messagesContainer) {
-            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            // Try to scroll to first unread message
+            const firstUnread = document.getElementById('first-unread-message');
+            if (firstUnread) {
+                firstUnread.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            } else {
+                // If no unread messages, scroll to bottom
+                messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            }
         }
     });
 </script>
@@ -525,6 +551,22 @@
         font-size: 0.75rem;
         color: #6b7280;
         white-space: nowrap;
+    }
+    
+    .unread-badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 20px;
+        height: 20px;
+        padding: 0 6px;
+        background: #ef4444;
+        color: white;
+        border-radius: 10px;
+        font-size: 0.7rem;
+        font-weight: 600;
+        line-height: 1;
+        box-shadow: 0 2px 4px rgba(239, 68, 68, 0.3);
     }
     
     .chat-preview {
@@ -657,6 +699,49 @@
         margin-top: 0.25rem;
     }
     
+    .message-unread {
+        opacity: 0.85;
+    }
+    
+    .message-unread .message-bubble {
+        border-left: 3px solid #ef4444;
+    }
+    
+    .unread-divider {
+        text-align: center;
+        margin: 1rem 0;
+        position: relative;
+    }
+    
+    .unread-divider::before,
+    .unread-divider::after {
+        content: '';
+        position: absolute;
+        top: 50%;
+        width: 40%;
+        height: 1px;
+        background: #e5e7eb;
+    }
+    
+    .unread-divider::before {
+        left: 0;
+    }
+    
+    .unread-divider::after {
+        right: 0;
+    }
+    
+    .unread-divider span {
+        background: #f3f4f6;
+        padding: 0.25rem 0.75rem;
+        border-radius: 1rem;
+        font-size: 0.75rem;
+        color: #ef4444;
+        font-weight: 600;
+        position: relative;
+        z-index: 1;
+    }
+    
     .chat-input-container {
         background: white;
         padding: 1rem 1.25rem;
@@ -755,7 +840,7 @@
     }
     
     .member-item {
-        padding: 0.75rem;
+        padding: 1rem;
         border-radius: 0.5rem;
         margin-bottom: 0.5rem;
         transition: all 0.2s ease;
@@ -777,17 +862,33 @@
         font-weight: 600;
         font-size: 0.85rem;
         box-shadow: 0 2px 6px rgba(102, 126, 234, 0.3);
+        margin-right: 1rem;
+        flex-shrink: 0;
+    }
+    
+    .member-info {
+        min-width: 0;
+        padding-right: 0.75rem;
     }
     
     .member-name {
         font-weight: 600;
         color: #1f2937;
         font-size: 0.9rem;
+        margin-bottom: 0.25rem;
+        line-height: 1.3;
     }
     
     .member-email {
         color: #6b7280;
         font-size: 0.8rem;
+        line-height: 1.3;
+        word-break: break-word;
+    }
+    
+    .member-status {
+        flex-shrink: 0;
+        margin-left: auto;
     }
     
     .status-badge {
