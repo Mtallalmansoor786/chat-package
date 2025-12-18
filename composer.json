@@ -1,0 +1,53 @@
+{
+    "name": "mtallalmansoor786/chat-package",
+    "description": "Peer-to-peer chat package for Laravel with Pusher support - Real-time messaging with chat rooms and vertical peer tables",
+    "type": "library",
+    "keywords": [
+        "laravel",
+        "chat",
+        "messaging",
+        "pusher",
+        "real-time",
+        "peer-to-peer",
+        "chat-rooms"
+    ],
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Tallal Mansoor - Chat Package",
+            "email": "dev@tallalmansoor.online"
+        }
+    ],
+    "require": {
+        "php": "^8.2",
+        "illuminate/support": "^12.0",
+        "pusher/pusher-php-server": "^7.0"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^11.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "ChatPackage\\ChatPackage\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "ChatPackage\\ChatPackage\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "ChatPackage\\ChatPackage\\ChatPackageServiceProvider"
+            ]
+        }
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true,
+    "config": {
+        "sort-packages": true,
+        "preferred-install": "dist"
+    }
+}
+
