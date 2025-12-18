@@ -23,7 +23,7 @@ A peer-to-peer chat package for Laravel with real-time messaging using Pusher. T
 Once published to Packagist or a Git repository:
 
 ```bash
-composer require chat-package/chat-package
+composer require mtallalmansoor786/chat-package
 ```
 
 Then:
@@ -56,7 +56,7 @@ Want to make it installable via `composer require`? See:
 **Quick Steps:**
 1. Push package to GitHub
 2. Submit to Packagist (or use private repo)
-3. Install anywhere with: `composer require tallalmansoor/chat-package`
+3. Install anywhere with: `composer require mtallalmansoor786/chat-package`
 
 ---
 
@@ -83,7 +83,7 @@ Add the package to your Laravel project's `composer.json`:
 Then run:
 
 ```bash
-composer require tallalmansoor/chat-package
+composer require mtallalmansoor786/chat-package
 ```
 
 ### Step 2: Configure Pusher

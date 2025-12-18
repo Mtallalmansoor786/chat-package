@@ -27,7 +27,7 @@ Add to your `composer.json`:
 
 ### 3. Install
 ```bash
-composer require chat-package/chat-package
+composer require mtallalmansoor786/chat-package
 ```
 
 ### 4. Configure .env
