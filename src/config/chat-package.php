@@ -42,5 +42,18 @@ return [
     |
     */
     'popup_enabled' => env('CHAT_POPUP_ENABLED', true),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Blade UI Configuration
+    |--------------------------------------------------------------------------
+    |
+    | Enable or disable the Blade-based chat room UI.
+    | Set to false if you're using this package with React.js, Vue.js, or
+    | any other frontend framework and only need the API endpoints.
+    | API routes will always be available regardless of this setting.
+    |
+    */
+    'ui_enabled' => env('CHAT_UI_ENABLED', true),
 ];
 
