@@ -58,5 +58,17 @@ interface ChatServiceInterface
      * Get the first unread message ID in a room for a user.
      */
     public function getFirstUnreadMessageId(int $roomId, int $userId): ?int;
+
+    /**
+     * Find or create a peer-to-peer chat room between two users.
+     * Returns existing room if found, creates new one if not.
+     */
+    public function findOrCreatePeerToPeerChat(int $currentUserId, int $otherUserId): ChatRoom;
+
+    /**
+     * Find an existing peer-to-peer chat room between two users.
+     * Returns null if no chat exists.
+     */
+    public function findPeerToPeerChat(int $currentUserId, int $otherUserId): ?ChatRoom;
 }
 

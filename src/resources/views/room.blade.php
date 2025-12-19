@@ -32,7 +32,11 @@
                                         <!-- Avatar -->
                                         <div class="chat-avatar me-3 position-relative">
                                             <div class="chat-avatar-circle">
-                                                <span class="chat-avatar-text">{{ strtoupper(substr($room->name, 0, 2)) }}</span>
+                                                @php
+                                                    $displayName = $room->getDisplayName(Auth::id());
+                                                    $avatarText = strtoupper(substr($displayName, 0, 2));
+                                                @endphp
+                                                <span class="chat-avatar-text">{{ $avatarText }}</span>
                                             </div>
                                         </div>
                                         
@@ -40,7 +44,7 @@
                                         <div class="flex-grow-1 chat-info">
                                             <div class="d-flex justify-content-between align-items-start mb-1">
                                                 <h6 class="mb-0 fw-semibold chat-room-name">
-                                                    {{ $room->name }}
+                                                    {{ $displayName }}
                                                 </h6>
                                                 <div class="d-flex align-items-center gap-2">
                                                     @if(isset($unreadCounts[$room->id]) && $unreadCounts[$room->id] > 0)
@@ -95,11 +99,15 @@
                     <div class="chat-messages-header">
                         <div class="d-flex align-items-center">
                             <div class="chat-header-avatar me-3">
-                                <span class="chat-header-avatar-text">{{ strtoupper(substr($chatRoom->name, 0, 2)) }}</span>
+                                @php
+                                    $chatDisplayName = $chatRoom->getDisplayName(Auth::id());
+                                    $chatAvatarText = strtoupper(substr($chatDisplayName, 0, 2));
+                                @endphp
+                                <span class="chat-header-avatar-text">{{ $chatAvatarText }}</span>
                             </div>
                             <div class="flex-grow-1">
-                                <h6 class="mb-0 fw-bold chat-room-title">{{ $chatRoom->name }}</h6>
-                                @if($chatRoom->description)
+                                <h6 class="mb-0 fw-bold chat-room-title">{{ $chatDisplayName }}</h6>
+                                @if($chatRoom->description && !$chatRoom->isPeerToPeer())
                                     <small class="text-muted chat-room-subtitle">{{ Str::limit($chatRoom->description, 50) }}</small>
                                 @endif
                             </div>

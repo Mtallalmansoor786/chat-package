@@ -31,5 +31,16 @@ return [
         'per_page' => 50,
         'max_message_length' => 1000,
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Popup Chat Configuration
+    |--------------------------------------------------------------------------
+    |
+    | Enable or disable the popup chat feature.
+    | Set to true to enable the popup chat component.
+    |
+    */
+    'popup_enabled' => env('CHAT_POPUP_ENABLED', true),
 ];
 

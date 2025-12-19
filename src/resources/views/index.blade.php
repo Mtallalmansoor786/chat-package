@@ -21,10 +21,10 @@
                             @foreach($chatRooms as $room)
                                 <a href="{{ route('chat.show', $room->id) }}" class="list-group-item list-group-item-action">
                                     <div class="d-flex w-100 justify-content-between">
-                                        <h6 class="mb-1 fw-bold">{{ $room->name }}</h6>
+                                        <h6 class="mb-1 fw-bold">{{ $room->getDisplayName(Auth::id()) }}</h6>
                                         <small>{{ $room->updated_at->diffForHumans() }}</small>
                                     </div>
-                                    @if($room->description)
+                                    @if($room->description && !$room->isPeerToPeer())
                                         <p class="mb-1 text-muted small">{{ Str::limit($room->description, 100) }}</p>
                                     @endif
                                     <div class="d-flex align-items-center mt-2">

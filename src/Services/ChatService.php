@@ -193,5 +193,33 @@ class ChatService implements ChatServiceInterface
 
         return $firstUnread ? $firstUnread->id : null;
     }
+
+    /**
+     * Find or create a peer-to-peer chat room between two users.
+     * Returns existing room if found, creates new one if not.
+     */
+    public function findOrCreatePeerToPeerChat(int $currentUserId, int $otherUserId): ChatRoom
+    {
+        // Prevent user from chatting with themselves
+        if ($currentUserId === $otherUserId) {
+            throw new \InvalidArgumentException('Cannot create a chat with yourself.');
+        }
+
+        return $this->chatRoomRepository->findOrCreatePeerToPeerChat($currentUserId, $otherUserId);
+    }
+
+    /**
+     * Find an existing peer-to-peer chat room between two users.
+     * Returns null if no chat exists.
+     */
+    public function findPeerToPeerChat(int $currentUserId, int $otherUserId): ?ChatRoom
+    {
+        // Prevent user from chatting with themselves
+        if ($currentUserId === $otherUserId) {
+            return null;
+        }
+
+        return $this->chatRoomRepository->findPeerToPeerChat($currentUserId, $otherUserId);
+    }
 }
 

@@ -52,5 +52,16 @@ interface ChatRoomRepositoryInterface
      * Remove users from chat room.
      */
     public function removeUsers(ChatRoom $chatRoom, array $userIds): void;
+
+    /**
+     * Find or create a peer-to-peer chat room between two users.
+     */
+    public function findOrCreatePeerToPeerChat(int $userId1, int $userId2): ChatRoom;
+
+    /**
+     * Find an existing peer-to-peer chat room between two users.
+     * Returns null if no chat exists.
+     */
+    public function findPeerToPeerChat(int $userId1, int $userId2): ?ChatRoom;
 }
 
