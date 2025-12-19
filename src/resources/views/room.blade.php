@@ -400,13 +400,14 @@
             submitButton.disabled = true;
             submitButton.innerHTML = '<i class="bi bi-hourglass-split"></i>';
 
-            fetch('{{ route('chat.message.send', $chatRoom->id) }}', {
+            fetch('/api/chat/rooms/{{ $chatRoom->id }}/messages', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'X-CSRF-TOKEN': '{{ csrf_token() }}',
                 'Accept': 'application/json'
             },
+            credentials: 'same-origin',
             body: JSON.stringify({ message: message })
         })
         .then(response => {

@@ -328,12 +328,13 @@
         document.getElementById('sendMessageBtn').disabled = false;
         
         // Load chat info and messages (only if chat exists)
-        fetch(`/chat/api/p2p/${userId}`, {
+        fetch(`/api/chat/p2p/${userId}`, {
             method: 'GET',
             headers: {
                 'X-CSRF-TOKEN': '{{ csrf_token() }}',
                 'Accept': 'application/json',
-            }
+            },
+            credentials: 'same-origin'
         })
         .then(response => response.json())
         .then(data => {
@@ -435,11 +436,11 @@
         
         if (chatExists && currentChatRoomId) {
             // Chat exists, use regular message endpoint
-            url = `/chat/room/${currentChatRoomId}/message`;
+            url = `/api/chat/rooms/${currentChatRoomId}/messages`;
             body = JSON.stringify({ message: message });
         } else {
             // Chat doesn't exist, use P2P message endpoint (will create chat)
-            url = `/chat/api/p2p/${currentOtherUserId}/message`;
+            url = `/api/chat/p2p/${currentOtherUserId}/message`;
             body = JSON.stringify({ message: message });
         }
         
@@ -450,6 +451,7 @@
                 'X-CSRF-TOKEN': '{{ csrf_token() }}',
                 'Accept': 'application/json',
             },
+            credentials: 'same-origin',
             body: body
         })
         .then(response => response.json())

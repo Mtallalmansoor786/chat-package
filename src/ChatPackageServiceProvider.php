@@ -78,12 +78,17 @@ class ChatPackageServiceProvider extends ServiceProvider
      */
     protected function loadRoutes(): void
     {
-        Route::middleware(['web', 'auth'])
-            ->prefix('chat')
-            ->name('chat.')
-            ->group(function () {
-                require __DIR__.'/routes/web.php';
-            });
+        // Load web routes (for Blade views)
+        // Apply web middleware first (for session/CSRF), then auth middleware
+        Route::group(['middleware' => ['web', 'auth'], 'prefix' => 'chat', 'as' => 'chat.'], function () {
+            require __DIR__.'/routes/web.php';
+        });
+
+        // Load API routes (for React.js and other frontends)
+        // Apply web middleware first (for session/CSRF), then auth middleware
+        Route::group(['middleware' => ['web', 'auth'], 'prefix' => 'api/chat', 'as' => 'api.chat.'], function () {
+            require __DIR__.'/routes/api.php';
+        });
     }
 }
 
