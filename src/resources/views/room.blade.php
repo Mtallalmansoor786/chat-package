@@ -23,12 +23,12 @@
                 
                 <!-- Chat List -->
                 <div class="flex-grow-1 overflow-auto" id="chatRoomsSidebar">
-                    <div class="text-center py-5">
+                    <div class="text-center py-5" id="sidebarLoader">
                         <div class="spinner-border text-primary" role="status">
                             <span class="visually-hidden">Loading...</span>
-                                            </div>
+                        </div>
                         <p class="mt-2 text-muted">Loading chats...</p>
-                                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -166,7 +166,15 @@
     let channel = null;
     
     // Load chat rooms for sidebar
-    function loadChatRoomsSidebar() {
+    function loadChatRoomsSidebar(showLoader = false) {
+        const container = document.getElementById('chatRoomsSidebar');
+        const loader = document.getElementById('sidebarLoader');
+        
+        // Only show loader on initial load
+        if (showLoader && loader) {
+            loader.style.display = 'block';
+        }
+        
         fetch(`${apiBaseUrl}/rooms`, {
             headers: {
                 'X-CSRF-TOKEN': csrfToken,
@@ -176,18 +184,17 @@
         })
         .then(response => response.json())
         .then(data => {
-            const container = document.getElementById('chatRoomsSidebar');
             const rooms = data.chat_rooms || data.rooms || [];
             
             if (rooms.length > 0) {
-                container.innerHTML = '<div class="list-group list-group-flush">' + rooms.map(room => {
+                container.innerHTML = '<div class="list-group list-group-flush" id="chatRoomsList">' + rooms.map(room => {
                     const isActive = room.id == currentRoomId ? 'active' : '';
                     const displayName = room.display_name || room.name || 'Chat Room';
                     const avatarText = displayName.substring(0, 2).toUpperCase();
                     const lastMessage = room.last_message ? room.last_message.message.substring(0, 40) : 'No messages yet';
                     
                     return `
-                        <a href="/chat/room/${room.id}" class="list-group-item list-group-item-action border-0 px-3 py-3 chat-room-item ${isActive}">
+                        <a href="/chat/room/${room.id}" class="list-group-item list-group-item-action border-0 px-3 py-3 chat-room-item ${isActive}" data-room-id="${room.id}">
                             <div class="d-flex align-items-center">
                                 <div class="chat-avatar me-3 position-relative">
                                     <div class="chat-avatar-circle">
@@ -213,6 +220,9 @@
                         </a>
                     `;
                 }).join('') + '</div>';
+                
+                // Attach click handlers to prevent reload
+                attachChatRoomClickHandlers();
             } else {
                 container.innerHTML = `
                     <div class="chat-empty-state">
@@ -226,14 +236,63 @@
                     </div>
                 `;
             }
+            
+            // Hide loader after content is loaded
+            if (loader) {
+                loader.style.display = 'none';
+            }
         })
         .catch(error => {
             console.error('Error loading chat rooms:', error);
-            document.getElementById('chatRoomsSidebar').innerHTML = `
+            container.innerHTML = `
                 <div class="alert alert-danger m-3">
                     <i class="bi bi-exclamation-triangle me-2"></i>Failed to load chat rooms.
                 </div>
             `;
+            if (loader) {
+                loader.style.display = 'none';
+            }
+        });
+    }
+    
+    // Attach click handlers to chat room links to prevent page reload
+    function attachChatRoomClickHandlers() {
+        const chatRoomLinks = document.querySelectorAll('.chat-room-item[data-room-id]');
+        chatRoomLinks.forEach(link => {
+            link.addEventListener('click', function(e) {
+                e.preventDefault();
+                const roomId = this.getAttribute('data-room-id');
+                if (roomId && roomId != currentRoomId) {
+                    switchToChat(roomId);
+                }
+            });
+        });
+    }
+    
+    // Switch to a different chat without page reload
+    function switchToChat(roomId) {
+        if (!roomId || roomId == currentRoomId) return;
+        
+        // Update URL without reload
+        window.history.pushState({ roomId: roomId }, '', `/chat/room/${roomId}`);
+        
+        // Update active state in sidebar immediately (optimistic update)
+        updateSidebarActiveState(roomId);
+        
+        // Load the new chat room
+        loadChatRoom(roomId);
+    }
+    
+    // Update active state in sidebar without reloading
+    function updateSidebarActiveState(roomId) {
+        const chatRoomItems = document.querySelectorAll('.chat-room-item');
+        chatRoomItems.forEach(item => {
+            const itemRoomId = item.getAttribute('data-room-id');
+            if (itemRoomId == roomId) {
+                item.classList.add('active');
+            } else {
+                item.classList.remove('active');
+            }
         });
     }
     
@@ -246,6 +305,19 @@
         }
         
         currentRoomId = roomId;
+        
+        // Show loading state with smooth transition
+        const welcomeScreen = document.getElementById('chatWelcomeScreen');
+        const chatBody = document.getElementById('chatMessagesBody');
+        const chatHeader = document.getElementById('chatHeader');
+        
+        // Smooth transition to loading state
+        if (chatBody.style.display !== 'none') {
+            chatBody.style.opacity = '0.5';
+        }
+        welcomeScreen.style.display = 'flex';
+        chatBody.style.display = 'none';
+        chatHeader.style.display = 'none';
         document.getElementById('welcomeTitle').textContent = 'Loading chat...';
         document.getElementById('welcomeText').textContent = 'Please wait while we load the chat room.';
         
@@ -274,7 +346,6 @@
                 document.getElementById('chatHeaderAvatar').textContent = avatarText;
                 document.getElementById('chatRoomTitle').textContent = displayName;
                 document.getElementById('chatRoomSubtitle').textContent = room.description || '';
-                document.getElementById('chatHeader').style.display = 'block';
                 
                 // Load messages
                 loadMessages(roomId, data.messages || []);
@@ -285,18 +356,23 @@
                 // Initialize Pusher
                 initializePusher(roomId);
                 
-                // Show chat area, hide welcome
-                document.getElementById('chatMessagesBody').style.display = 'flex';
-                document.getElementById('chatWelcomeScreen').style.display = 'none';
+                // Show chat area with smooth transition
+                chatHeader.style.display = 'block';
+                chatBody.style.display = 'flex';
+                chatBody.style.opacity = '1';
+                welcomeScreen.style.display = 'none';
                 
-                // Reload sidebar to update active state
-                loadChatRoomsSidebar();
+                // Update sidebar active state without reloading
+                updateSidebarActiveState(roomId);
             } else {
                 throw new Error(data.error || 'Failed to load chat room');
             }
         })
         .catch(error => {
             console.error('Error loading chat room:', error);
+            welcomeScreen.style.display = 'flex';
+            chatBody.style.display = 'none';
+            chatHeader.style.display = 'none';
             document.getElementById('welcomeTitle').textContent = 'Error loading chat';
             document.getElementById('welcomeText').textContent = error.message || 'Failed to load chat room. Please try again.';
         });
@@ -550,10 +626,20 @@
         });
     }
     
+    // Handle browser back/forward buttons
+    window.addEventListener('popstate', function(event) {
+        const roomId = event.state ? event.state.roomId : null;
+        if (roomId && roomId != currentRoomId) {
+            currentRoomId = roomId;
+            loadChatRoom(roomId);
+            updateSidebarActiveState(roomId);
+        }
+    });
+    
     // Initialize on page load
     document.addEventListener('DOMContentLoaded', function() {
-        // Load chat rooms sidebar
-        loadChatRoomsSidebar();
+        // Load chat rooms sidebar with loader on initial load
+        loadChatRoomsSidebar(true);
         
         // Load chat room if roomId is provided
         if (currentRoomId) {
@@ -597,6 +683,7 @@
         padding: 1.25rem;
         color: white;
         box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        transition: opacity 0.3s ease;
     }
     
     .chat-header-icon {
@@ -621,16 +708,23 @@
         border-left: 3px solid transparent;
         transition: all 0.2s ease;
         position: relative;
+        cursor: pointer;
     }
     
     .chat-room-item:hover {
         background: #f3f4f6 !important;
         border-left-color: #667eea;
+        transform: translateX(2px);
     }
     
     .chat-room-item.active {
         background: #eef2ff !important;
         border-left-color: #667eea;
+        font-weight: 600;
+    }
+    
+    .chat-room-item.active .chat-room-name {
+        color: #667eea;
     }
     
     .chat-avatar-circle {
@@ -714,6 +808,15 @@
         margin-bottom: 1.5rem;
     }
     
+    /* Sidebar Loader */
+    #sidebarLoader {
+        transition: opacity 0.3s ease;
+    }
+    
+    #sidebarLoader.hidden {
+        display: none;
+    }
+    
     /* Messages Area */
     .chat-messages-header {
         background: #667eea;
@@ -752,6 +855,7 @@
         flex-direction: column;
         overflow: hidden;
         position: relative;
+        transition: opacity 0.3s ease;
     }
     
     .messages-container {
@@ -918,6 +1022,7 @@
         align-items: center;
         justify-content: center;
         background: #f3f4f6;
+        transition: opacity 0.3s ease;
     }
     
     .chat-welcome-content {
