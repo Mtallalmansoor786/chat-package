@@ -274,6 +274,12 @@
     function switchToChat(roomId) {
         if (!roomId || roomId == currentRoomId) return;
         
+        // Close right sidebar if it's open when switching chats
+        const sidebar = document.getElementById('rightSidebar');
+        if (sidebar && sidebar.classList.contains('sidebar-visible')) {
+            closeRightSidebar();
+        }
+        
         // Update URL without reload
         window.history.pushState({ roomId: roomId }, '', `/chat/room/${roomId}`);
         
