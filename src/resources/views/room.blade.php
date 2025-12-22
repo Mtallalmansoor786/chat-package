@@ -34,7 +34,7 @@
         </div>
 
         <!-- Center: Chat Messages Area -->
-        <div class="col-md-5 d-flex flex-column" style="height: 100%;">
+        <div class="col-md-5 d-flex flex-column chat-area" id="chatArea" style="height: 100%;">
             <div class="card border-0 h-100 d-flex flex-column">
                 <!-- Chat Header (loaded via JS) -->
                 <div id="chatHeader" style="display: none;">
@@ -43,9 +43,12 @@
                             <div class="chat-header-avatar me-3">
                                 <span class="chat-header-avatar-text" id="chatHeaderAvatar">--</span>
                             </div>
-                            <div class="flex-grow-1">
+                            <div class="flex-grow-1 chat-title-clickable" id="chatTitleContainer" style="cursor: pointer;" title="Click to view details">
                                 <h6 class="mb-0 fw-bold chat-room-title" id="chatRoomTitle">Loading...</h6>
                                 <small class="text-muted chat-room-subtitle" id="chatRoomSubtitle"></small>
+                            </div>
+                            <div class="chat-title-info-icon ms-2" style="opacity: 0.7;">
+                                <i class="bi bi-info-circle" style="font-size: 1.1rem;"></i>
                             </div>
                             </div>
                         </div>
@@ -85,30 +88,26 @@
             </div>
         </div>
 
-        <!-- Right Sidebar: Users/Peers -->
-        <div class="col-md-4 border-start bg-white" style="height: 100%; overflow-y: auto;">
+        <!-- Sidebar Backdrop (for mobile) -->
+        <div class="sidebar-backdrop sidebar-backdrop-hidden" id="sidebarBackdrop"></div>
+        
+        <!-- Right Sidebar: Chat Details / User Details -->
+        <div class="col-md-4 border-start bg-white right-sidebar sidebar-hidden" id="rightSidebar" style="height: 100%; overflow-y: auto;">
             <div class="d-flex flex-column h-100">
-                <!-- Peers Header (loaded via JS) -->
-                <div id="membersHeader" style="display: none;">
-                    <div class="members-header">
-                        <h6 class="mb-0 fw-bold">
-                            <i class="bi bi-people-fill me-2"></i>Members (<span id="membersCount">0</span>)
-                        </h6>
+                <!-- Sidebar Header with Close Button -->
+                <div class="sidebar-header">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h6 class="mb-0 fw-bold" id="sidebarTitle">Details</h6>
+                        <button type="button" class="btn btn-sm btn-link text-muted p-0" id="closeSidebarBtn" style="font-size: 1.5rem; line-height: 1;">
+                            <i class="bi bi-x-lg"></i>
+                        </button>
                     </div>
-                    </div>
-                    
-                <!-- Peers List (loaded via JS) -->
-                <div id="membersList" class="members-list" style="display: none;">
-                    <!-- Members will be loaded here via JavaScript -->
-                                    </div>
+                </div>
                 
-                    <!-- No Chat Selected Message -->
-                <div id="membersEmpty" class="members-empty">
-                        <div class="members-empty-icon">
-                            <i class="bi bi-info-circle"></i>
-                        </div>
-                        <p class="members-empty-text">Select a chat to view members</p>
-                    </div>
+                <!-- Sidebar Content Container -->
+                <div class="flex-grow-1 overflow-auto" id="sidebarContent">
+                    <!-- Content will be loaded here via JavaScript -->
+                </div>
             </div>
         </div>
     </div>
@@ -164,6 +163,8 @@
     let currentRoomId = roomId;
     let pusher = null;
     let channel = null;
+    let currentRoomData = null; // Store current room data
+    let currentPeers = []; // Store current peers/members
     
     // Load chat rooms for sidebar
     function loadChatRoomsSidebar(showLoader = false) {
@@ -342,6 +343,10 @@
                 const displayName = room.display_name || room.name || 'Chat Room';
                 const avatarText = displayName.substring(0, 2).toUpperCase();
                 
+                // Store room data and peers
+                currentRoomData = room;
+                currentPeers = data.peers || [];
+                
                 // Update header
                 document.getElementById('chatHeaderAvatar').textContent = avatarText;
                 document.getElementById('chatRoomTitle').textContent = displayName;
@@ -349,9 +354,6 @@
                 
                 // Load messages
                 loadMessages(roomId, data.messages || []);
-                
-                // Load members
-                loadMembers(room.peers || []);
                 
                 // Initialize Pusher
                 initializePusher(roomId);
@@ -406,45 +408,241 @@
         container.scrollTop = container.scrollHeight;
     }
     
-    // Load members/peers
-    function loadMembers(peers) {
-        const container = document.getElementById('membersList');
-        const header = document.getElementById('membersHeader');
-        const empty = document.getElementById('membersEmpty');
+    // Toggle right sidebar
+    function toggleRightSidebar() {
+        const sidebar = document.getElementById('rightSidebar');
+        const chatArea = document.getElementById('chatArea');
+        const backdrop = document.getElementById('sidebarBackdrop');
         
-        if (!peers || peers.length === 0) {
-            container.style.display = 'none';
-            header.style.display = 'none';
-            empty.style.display = 'block';
+        if (sidebar.classList.contains('sidebar-hidden')) {
+            // Show sidebar
+            showSidebarContent();
+            sidebar.classList.remove('sidebar-hidden');
+            sidebar.classList.add('sidebar-visible');
+            if (backdrop) {
+                backdrop.classList.remove('sidebar-backdrop-hidden');
+                backdrop.classList.add('sidebar-backdrop-visible');
+            }
+            chatArea.classList.remove('chat-area-full');
+            chatArea.classList.add('chat-area-with-sidebar');
+        } else {
+            // Hide sidebar
+            sidebar.classList.remove('sidebar-visible');
+            sidebar.classList.add('sidebar-hidden');
+            if (backdrop) {
+                backdrop.classList.remove('sidebar-backdrop-visible');
+                backdrop.classList.add('sidebar-backdrop-hidden');
+            }
+            chatArea.classList.remove('chat-area-with-sidebar');
+            chatArea.classList.add('chat-area-full');
+        }
+    }
+    
+    // Close sidebar and expand chat area
+    function closeRightSidebar() {
+        const sidebar = document.getElementById('rightSidebar');
+        const chatArea = document.getElementById('chatArea');
+        const backdrop = document.getElementById('sidebarBackdrop');
+        sidebar.classList.remove('sidebar-visible');
+        sidebar.classList.add('sidebar-hidden');
+        if (backdrop) {
+            backdrop.classList.remove('sidebar-backdrop-visible');
+            backdrop.classList.add('sidebar-backdrop-hidden');
+        }
+        chatArea.classList.remove('chat-area-with-sidebar');
+        chatArea.classList.add('chat-area-full');
+    }
+    
+    // Show sidebar content based on chat type
+    function showSidebarContent() {
+        if (!currentRoomData) return;
+        
+        const sidebar = document.getElementById('rightSidebar');
+        const sidebarContent = document.getElementById('sidebarContent');
+        const sidebarTitle = document.getElementById('sidebarTitle');
+        
+        if (currentRoomData.is_peer_to_peer) {
+            // Show peer-to-peer user details
+            showPeerDetails(sidebarContent, sidebarTitle);
+        } else {
+            // Show group details with members list
+            showGroupDetails(sidebarContent, sidebarTitle);
+        }
+    }
+    
+    // Show peer-to-peer user details
+    function showPeerDetails(container, titleElement) {
+        // Find the other peer (not current user)
+        const otherPeer = currentPeers.find(peer => peer.id != currentUserId);
+        
+        if (!otherPeer) {
+            container.innerHTML = '<div class="p-4 text-center text-muted">No peer found</div>';
             return;
         }
         
-        document.getElementById('membersCount').textContent = peers.length;
-        container.innerHTML = peers.map(peer => {
-            const avatarText = (peer.name || peer.email || 'U').substring(0, 2).toUpperCase();
-            return `
-                <div class="member-item">
-                    <div class="d-flex align-items-center">
-                        <div class="member-avatar">
-                            <span class="member-avatar-text">${avatarText}</span>
+        titleElement.textContent = 'Contact Info';
+        const avatarText = (otherPeer.name || otherPeer.email || 'U').substring(0, 2).toUpperCase();
+        
+        container.innerHTML = `
+            <div class="sidebar-content-wrapper">
+                <div class="user-details-header">
+                    <div class="user-details-avatar-large">
+                        <span class="user-details-avatar-text-large">${avatarText}</span>
+                    </div>
+                    <h5 class="user-details-name">${escapeHtml(otherPeer.name || 'Unknown')}</h5>
+                    <p class="user-details-email">${escapeHtml(otherPeer.email || '')}</p>
+                </div>
+                <div class="user-details-body">
+                    <div class="user-details-section">
+                        <h6 class="user-details-section-title">Contact Information</h6>
+                        <div class="user-details-item">
+                            <div class="user-details-item-label">
+                                <i class="bi bi-envelope me-2"></i>Email
+                            </div>
+                            <div class="user-details-item-value">${escapeHtml(otherPeer.email || 'Not available')}</div>
                         </div>
-                        <div class="flex-grow-1 member-info">
-                            <div class="member-name">${peer.name || 'Unknown'}</div>
-                            <div class="member-email">${peer.email || ''}</div>
-                        </div>
-                        <div class="member-status">
-                            <span class="status-badge status-online" id="status-${peer.id}">
-                                <span class="status-dot"></span>Online
-                            </span>
+                        <div class="user-details-item">
+                            <div class="user-details-item-label">
+                                <i class="bi bi-person me-2"></i>Name
+                            </div>
+                            <div class="user-details-item-value">${escapeHtml(otherPeer.name || 'Unknown')}</div>
                         </div>
                     </div>
                 </div>
-            `;
-        }).join('');
+            </div>
+        `;
+    }
+    
+    // Show group details with members list
+    function showGroupDetails(container, titleElement) {
+        titleElement.textContent = 'Group Info';
+        const avatarText = (currentRoomData.display_name || currentRoomData.name || 'G').substring(0, 2).toUpperCase();
         
-        container.style.display = 'block';
-        header.style.display = 'block';
-        empty.style.display = 'none';
+        container.innerHTML = `
+            <div class="sidebar-content-wrapper">
+                <div class="group-details-header">
+                    <div class="group-details-avatar-large">
+                        <span class="group-details-avatar-text-large">${avatarText}</span>
+                    </div>
+                    <h5 class="group-details-name">${escapeHtml(currentRoomData.display_name || currentRoomData.name || 'Group')}</h5>
+                    ${currentRoomData.description ? `<p class="group-details-description">${escapeHtml(currentRoomData.description)}</p>` : ''}
+                    <div class="group-details-meta">
+                        <span class="group-details-meta-item">
+                            <i class="bi bi-people-fill me-1"></i>${currentPeers.length} members
+                        </span>
+                        <span class="group-details-meta-item">
+                            <i class="bi bi-calendar me-1"></i>Created ${formatDate(currentRoomData.created_at)}
+                        </span>
+                    </div>
+                </div>
+                <div class="group-details-body">
+                    <div class="group-details-section">
+                        <h6 class="group-details-section-title">
+                            <i class="bi bi-people-fill me-2"></i>Members (${currentPeers.length})
+                        </h6>
+                        <div class="members-list-group">
+                            ${currentPeers.map(peer => {
+                                const peerAvatarText = (peer.name || peer.email || 'U').substring(0, 2).toUpperCase();
+                                const isCurrentUser = peer.id == currentUserId;
+                                return `
+                                    <div class="member-item-clickable" data-peer-id="${peer.id}" style="cursor: pointer;">
+                                        <div class="d-flex align-items-center">
+                                            <div class="member-avatar">
+                                                <span class="member-avatar-text">${peerAvatarText}</span>
+                                            </div>
+                                            <div class="flex-grow-1 member-info">
+                                                <div class="member-name">
+                                                    ${escapeHtml(peer.name || 'Unknown')} ${isCurrentUser ? '<span class="text-muted">(You)</span>' : ''}
+                                                </div>
+                                                <div class="member-email">${escapeHtml(peer.email || '')}</div>
+                                            </div>
+                                            <div class="member-arrow">
+                                                <i class="bi bi-chevron-right"></i>
+                                            </div>
+                                        </div>
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        // Attach click handlers to members
+        attachMemberClickHandlers();
+    }
+    
+    // Show individual member details
+    function showMemberDetails(peerId) {
+        const peer = currentPeers.find(p => p.id == peerId);
+        if (!peer) return;
+        
+        const sidebarContent = document.getElementById('sidebarContent');
+        const sidebarTitle = document.getElementById('sidebarTitle');
+        
+        sidebarTitle.innerHTML = `
+            <button type="button" class="btn btn-sm btn-link text-muted p-0 me-2" id="backToGroupBtn" style="font-size: 1.2rem;">
+                <i class="bi bi-arrow-left"></i>
+            </button>
+            Contact Info
+        `;
+        
+        const avatarText = (peer.name || peer.email || 'U').substring(0, 2).toUpperCase();
+        
+        sidebarContent.innerHTML = `
+            <div class="sidebar-content-wrapper">
+                <div class="user-details-header">
+                    <div class="user-details-avatar-large">
+                        <span class="user-details-avatar-text-large">${avatarText}</span>
+                    </div>
+                    <h5 class="user-details-name">${escapeHtml(peer.name || 'Unknown')}</h5>
+                    <p class="user-details-email">${escapeHtml(peer.email || '')}</p>
+                </div>
+                <div class="user-details-body">
+                    <div class="user-details-section">
+                        <h6 class="user-details-section-title">Contact Information</h6>
+                        <div class="user-details-item">
+                            <div class="user-details-item-label">
+                                <i class="bi bi-envelope me-2"></i>Email
+                            </div>
+                            <div class="user-details-item-value">${escapeHtml(peer.email || 'Not available')}</div>
+                        </div>
+                        <div class="user-details-item">
+                            <div class="user-details-item-label">
+                                <i class="bi bi-person me-2"></i>Name
+                            </div>
+                            <div class="user-details-item-value">${escapeHtml(peer.name || 'Unknown')}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        // Attach back button handler
+        document.getElementById('backToGroupBtn').addEventListener('click', function() {
+            showGroupDetails(sidebarContent, sidebarTitle);
+        });
+    }
+    
+    // Attach click handlers to members
+    function attachMemberClickHandlers() {
+        const memberItems = document.querySelectorAll('.member-item-clickable');
+        memberItems.forEach(item => {
+            item.addEventListener('click', function() {
+                const peerId = parseInt(this.getAttribute('data-peer-id'));
+                if (peerId) {
+                    showMemberDetails(peerId);
+                }
+            });
+        });
+    }
+    
+    // Helper function to format date
+    function formatDate(dateString) {
+        if (!dateString) return 'Unknown';
+        const date = new Date(dateString);
+        return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
     }
     
     // Initialize Pusher for real-time messaging
@@ -641,6 +839,38 @@
         // Load chat rooms sidebar with loader on initial load
         loadChatRoomsSidebar(true);
         
+        // Attach click handler to chat title
+        const chatTitleContainer = document.getElementById('chatTitleContainer');
+        if (chatTitleContainer) {
+            chatTitleContainer.addEventListener('click', function() {
+                if (currentRoomData) {
+                    toggleRightSidebar();
+                }
+            });
+        }
+        
+        // Attach click handler to close sidebar button
+        const closeSidebarBtn = document.getElementById('closeSidebarBtn');
+        if (closeSidebarBtn) {
+            closeSidebarBtn.addEventListener('click', function() {
+                closeRightSidebar();
+            });
+        }
+        
+        // Attach click handler to backdrop (close sidebar on backdrop click)
+        const backdrop = document.getElementById('sidebarBackdrop');
+        if (backdrop) {
+            backdrop.addEventListener('click', function() {
+                closeRightSidebar();
+            });
+        }
+        
+        // Initialize chat area to full width (sidebar hidden by default)
+        const chatArea = document.getElementById('chatArea');
+        if (chatArea) {
+            chatArea.classList.add('chat-area-full');
+        }
+        
         // Load chat room if roomId is provided
         if (currentRoomId) {
             loadChatRoom(currentRoomId);
@@ -817,6 +1047,35 @@
         display: none;
     }
     
+     /* Chat Area Width Control */
+     .chat-area {
+         transition: flex 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+                     width 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+                     max-width 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+         will-change: flex, width, max-width;
+     }
+     
+     .chat-area-full {
+         flex: 1 1 0 !important;
+         min-width: 0 !important;
+         width: auto !important;
+         max-width: none !important;
+     }
+     
+     .chat-area-with-sidebar {
+         flex: 0 0 41.66666667% !important; /* col-md-5 default width */
+         max-width: 41.66666667% !important;
+         width: 41.66666667% !important;
+     }
+     
+     /* Ensure row uses flexbox */
+     .chat-container .row.g-0 {
+         display: flex;
+         flex-wrap: nowrap;
+         overflow: hidden;
+     }
+    
+    
     /* Messages Area */
     .chat-messages-header {
         background: #667eea;
@@ -841,6 +1100,31 @@
     .chat-room-title {
         color: white;
         font-size: 1.1rem;
+        transition: opacity 0.2s ease;
+    }
+    
+    .chat-title-clickable {
+        position: relative;
+        padding: 0.25rem 0;
+        border-radius: 0.25rem;
+        transition: background-color 0.2s ease;
+    }
+    
+    .chat-title-clickable:hover {
+        background-color: rgba(255, 255, 255, 0.1);
+    }
+    
+    .chat-title-clickable:hover .chat-room-title {
+        opacity: 0.9;
+    }
+    
+    .chat-title-info-icon {
+        transition: opacity 0.2s ease, transform 0.2s ease;
+    }
+    
+    .chat-title-clickable:hover .chat-title-info-icon {
+        opacity: 1;
+        transform: scale(1.1);
     }
     
     .chat-room-subtitle {
@@ -1162,6 +1446,296 @@
         font-size: 0.9rem;
     }
     
+    /* Sidebar Backdrop */
+    .sidebar-backdrop {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 1049;
+        transition: opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        pointer-events: none;
+    }
+    
+    .sidebar-backdrop-hidden {
+        opacity: 0;
+        visibility: hidden;
+    }
+    
+    .sidebar-backdrop-visible {
+        opacity: 1;
+        visibility: visible;
+        pointer-events: auto;
+    }
+    
+    .sidebar-backdrop-visible {
+        cursor: pointer;
+    }
+    
+     /* Right Sidebar Styles */
+     .right-sidebar {
+         background: white;
+         box-shadow: -2px 0 10px rgba(0,0,0,0.05);
+         position: relative;
+         overflow: hidden;
+         will-change: transform, flex, width, max-width, opacity;
+         transform-origin: right center;
+     }
+     
+     /* Sidebar Hidden State - Slides out to the right smoothly */
+     .right-sidebar.sidebar-hidden {
+         flex: 0 0 0 !important;
+         width: 0 !important;
+         max-width: 0 !important;
+         min-width: 0 !important;
+         padding: 0 !important;
+         margin: 0 !important;
+         border: none !important;
+         opacity: 0;
+         pointer-events: none;
+         overflow: hidden;
+         transition: flex 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+                     width 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+                     max-width 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+                     padding 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+                     margin 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+                     opacity 0.35s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+     }
+     
+     /* Sidebar Visible State - Slides in from the right smoothly */
+     .right-sidebar.sidebar-visible {
+         flex: 0 0 33.333333% !important;
+         width: 33.333333% !important;
+         max-width: 33.333333% !important;
+         opacity: 1;
+         pointer-events: auto;
+         transition: flex 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+                     width 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+                     max-width 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+                     padding 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+                     margin 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+                     opacity 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94) 0.1s;
+         border-left: 1px solid #e5e7eb !important;
+         overflow-y: auto;
+     }
+    
+    /* Sidebar Content Animation - Fade in after slide */
+    .right-sidebar .sidebar-header,
+    .right-sidebar #sidebarContent {
+        transition: opacity 0.25s ease 0.15s;
+    }
+    
+    .right-sidebar.sidebar-hidden .sidebar-header,
+    .right-sidebar.sidebar-hidden #sidebarContent {
+        opacity: 0;
+        transition: opacity 0.2s ease;
+    }
+    
+    .right-sidebar.sidebar-visible .sidebar-header,
+    .right-sidebar.sidebar-visible #sidebarContent {
+        opacity: 1;
+    }
+    
+    .sidebar-header {
+        padding: 1.25rem;
+        border-bottom: 1px solid #e5e7eb;
+        background: white;
+        position: sticky;
+        top: 0;
+        z-index: 10;
+    }
+    
+    .sidebar-content-wrapper {
+        padding: 1.5rem;
+    }
+    
+    /* User Details Styles */
+    .user-details-header {
+        text-align: center;
+        padding: 2rem 1rem;
+        border-bottom: 1px solid #e5e7eb;
+        margin-bottom: 1.5rem;
+    }
+    
+    .user-details-avatar-large {
+        width: 100px;
+        height: 100px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 1rem;
+        box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+    }
+    
+    .user-details-avatar-text-large {
+        color: white;
+        font-size: 2.5rem;
+        font-weight: 600;
+    }
+    
+    .user-details-name {
+        color: #1f2937;
+        font-weight: 600;
+        margin-bottom: 0.5rem;
+        font-size: 1.5rem;
+    }
+    
+    .user-details-email {
+        color: #6b7280;
+        font-size: 0.95rem;
+        margin-bottom: 0;
+    }
+    
+    .user-details-body {
+        padding-top: 1rem;
+    }
+    
+    .user-details-section {
+        margin-bottom: 2rem;
+    }
+    
+    .user-details-section-title {
+        color: #374151;
+        font-weight: 600;
+        font-size: 0.9rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 1rem;
+        padding-bottom: 0.5rem;
+        border-bottom: 1px solid #e5e7eb;
+    }
+    
+    .user-details-item {
+        padding: 1rem 0;
+        border-bottom: 1px solid #f3f4f6;
+    }
+    
+    .user-details-item:last-child {
+        border-bottom: none;
+    }
+    
+    .user-details-item-label {
+        color: #6b7280;
+        font-size: 0.85rem;
+        margin-bottom: 0.5rem;
+        display: flex;
+        align-items: center;
+    }
+    
+    .user-details-item-value {
+        color: #1f2937;
+        font-weight: 500;
+        font-size: 0.95rem;
+    }
+    
+    /* Group Details Styles */
+    .group-details-header {
+        text-align: center;
+        padding: 2rem 1rem;
+        border-bottom: 1px solid #e5e7eb;
+        margin-bottom: 1.5rem;
+    }
+    
+    .group-details-avatar-large {
+        width: 100px;
+        height: 100px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 1rem;
+        box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+    }
+    
+    .group-details-avatar-text-large {
+        color: white;
+        font-size: 2.5rem;
+        font-weight: 600;
+    }
+    
+    .group-details-name {
+        color: #1f2937;
+        font-weight: 600;
+        margin-bottom: 0.5rem;
+        font-size: 1.5rem;
+    }
+    
+    .group-details-description {
+        color: #6b7280;
+        font-size: 0.95rem;
+        margin-bottom: 1rem;
+    }
+    
+    .group-details-meta {
+        display: flex;
+        justify-content: center;
+        gap: 1.5rem;
+        flex-wrap: wrap;
+    }
+    
+    .group-details-meta-item {
+        color: #6b7280;
+        font-size: 0.85rem;
+        display: flex;
+        align-items: center;
+    }
+    
+    .group-details-body {
+        padding-top: 1rem;
+    }
+    
+    .group-details-section {
+        margin-bottom: 2rem;
+    }
+    
+    .group-details-section-title {
+        color: #374151;
+        font-weight: 600;
+        font-size: 0.9rem;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 1rem;
+        padding-bottom: 0.5rem;
+        border-bottom: 1px solid #e5e7eb;
+        display: flex;
+        align-items: center;
+    }
+    
+    .members-list-group {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+    
+    .member-item-clickable {
+        padding: 1rem;
+        border-radius: 0.5rem;
+        transition: all 0.2s ease;
+        border: 1px solid transparent;
+    }
+    
+    .member-item-clickable:hover {
+        background: #f9fafb;
+        border-color: #e5e7eb;
+        transform: translateX(4px);
+    }
+    
+    .member-arrow {
+        color: #9ca3af;
+        font-size: 1.2rem;
+        transition: transform 0.2s ease;
+    }
+    
+    .member-item-clickable:hover .member-arrow {
+        transform: translateX(4px);
+        color: #667eea;
+    }
+    
     /* Animations */
     @keyframes messageSlideIn {
         from {
@@ -1202,13 +1776,104 @@
     
     /* Responsive */
     @media (max-width: 768px) {
-        .col-md-3, .col-md-4 {
+        .col-md-3 {
             display: none !important;
         }
-        .col-md-5 {
+        .sidebar-backdrop {
+            display: block;
+        }
+        .right-sidebar {
+            position: fixed;
+            right: 0;
+            top: 0;
+            bottom: 0;
+            z-index: 1050;
+            box-shadow: -4px 0 20px rgba(0,0,0,0.15);
+            width: 85% !important;
+            max-width: 400px !important;
+            flex: 0 0 auto !important;
+            will-change: transform, opacity;
+        }
+        .right-sidebar.sidebar-hidden {
+            transform: translateX(100%);
+            opacity: 0;
+            transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+                        opacity 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .right-sidebar.sidebar-visible {
+            transform: translateX(0);
+            opacity: 1;
+            transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+                        opacity 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .chat-area,
+        .chat-area-full,
+        .chat-area-with-sidebar {
             width: 100% !important;
+            flex: 1 1 100% !important;
+            max-width: 100% !important;
         }
     }
+    
+    @media (min-width: 769px) and (max-width: 992px) {
+        .sidebar-backdrop {
+            display: block;
+        }
+        .right-sidebar {
+            position: fixed;
+            right: 0;
+            top: 0;
+            bottom: 0;
+            z-index: 1050;
+            box-shadow: -4px 0 20px rgba(0,0,0,0.15);
+            width: 350px !important;
+            max-width: 350px !important;
+            flex: 0 0 auto !important;
+            will-change: transform, opacity;
+        }
+        .right-sidebar.sidebar-hidden {
+            transform: translateX(100%);
+            opacity: 0;
+            transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+                        opacity 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .right-sidebar.sidebar-visible {
+            transform: translateX(0);
+            opacity: 1;
+            transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+                        opacity 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .chat-area-full {
+            flex: 1 1 auto !important;
+            width: auto !important;
+            max-width: none !important;
+        }
+    }
+    
+     @media (min-width: 993px) {
+         .sidebar-backdrop {
+             display: none !important;
+         }
+         /* Desktop: Sidebar maintains width but slides out of view */
+         .right-sidebar {
+             position: relative;
+         }
+         .right-sidebar.sidebar-hidden {
+             /* Keep width but slide out */
+             transform: translateX(100%);
+             opacity: 0;
+             pointer-events: none;
+         }
+         .right-sidebar.sidebar-visible {
+             transform: translateX(0);
+             opacity: 1;
+             pointer-events: auto;
+         }
+         /* Hide sidebar content when hidden to prevent interaction */
+         .right-sidebar.sidebar-hidden * {
+             pointer-events: none;
+         }
+     }
 </style>
 
 <script>
