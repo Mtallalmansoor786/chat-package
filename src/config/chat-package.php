@@ -48,12 +48,20 @@ return [
     | Blade UI Configuration
     |--------------------------------------------------------------------------
     |
-    | Enable or disable the Blade-based chat room UI.
-    | Set to false if you're using this package with React.js, Vue.js, or
-    | any other frontend framework and only need the API endpoints.
-    | API routes will always be available regardless of this setting.
+    | This setting controls whether Blade views are published/available.
+    | It does NOT enable web routes - this package is 100% API-based.
+    |
+    | Set to true if you want to use the package's Blade views in your
+    | own routes/controllers. The views will use JavaScript to call the
+    | API endpoints at /api/chat/*.
+    |
+    | Set to false if you're building a completely custom frontend
+    | (React, Vue, Angular, etc.) and don't need the Blade views.
+    |
+    | NOTE: Web routes are completely removed. All functionality is
+    | available via API endpoints at /api/chat/* regardless of this setting.
     |
     */
-    'ui_enabled' => env('CHAT_UI_ENABLED', true),
+    'ui_enabled' => env('CHAT_UI_ENABLED', false),
 ];
 

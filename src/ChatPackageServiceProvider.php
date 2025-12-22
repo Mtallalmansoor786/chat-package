@@ -82,19 +82,14 @@ class ChatPackageServiceProvider extends ServiceProvider
 
     /**
      * Load package routes
+     * 
+     * This package is 100% API-based. All functionality is available via
+     * /api/chat/* endpoints. Web routes are completely removed.
      */
     protected function loadRoutes(): void
     {
-        // Load web routes (for Blade views) - only if UI is enabled
-        // These routes provide the Blade-based chat room interface
-        if (config('chat-package.ui_enabled', true)) {
-            Route::group(['middleware' => ['web', 'auth'], 'prefix' => 'chat', 'as' => 'chat.'], function () {
-                require __DIR__.'/routes/web.php';
-            });
-        }
-
-        // Load API routes (for React.js and other frontends)
-        // These routes are always available regardless of UI setting
+        // Load API routes only - this package is fully API-based
+        // All routes return JSON responses and work with any frontend framework
         // Apply web middleware first (for session/CSRF), then auth middleware
         Route::group(['middleware' => ['web', 'auth'], 'prefix' => 'api/chat', 'as' => 'api.chat.'], function () {
             require __DIR__.'/routes/api.php';

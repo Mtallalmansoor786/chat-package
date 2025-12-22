@@ -8,7 +8,6 @@ use ChatPackage\ChatPackage\Services\Contracts\ChatServiceInterface;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Routing\Controller;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\View\View;
 
 class ChatController extends Controller
 {
@@ -19,48 +18,38 @@ class ChatController extends Controller
 
     /**
      * Display the chat interface.
+     * 
+     * NOTE: This method is deprecated. Use apiGetUserChatRooms() instead.
+     * Web routes are disabled by default - this package is API-only.
      */
-    public function index(): View
+    public function index(): JsonResponse
     {
-        $chatRooms = $this->chatService->getUserChatRooms(Auth::id());
-        $chatRoom = null;
-        $messages = collect([]);
-        $unreadCounts = $this->chatService->getUnreadCounts(Auth::id(), $chatRooms);
-        $firstUnreadMessageId = null;
-
-        return view('chat-package::room', compact('chatRoom', 'messages', 'chatRooms', 'unreadCounts', 'firstUnreadMessageId'));
+        // Return JSON response instead of view (API-only mode)
+        return $this->apiGetUserChatRooms();
     }
 
     /**
      * Show a specific chat room.
+     * 
+     * NOTE: This method is deprecated. Use apiGetChatRoom() instead.
+     * Web routes are disabled by default - this package is API-only.
      */
-    public function show(int $roomId): View
+    public function show(int $roomId): JsonResponse
     {
-        $userId = Auth::id();
-        $chatRoom = $this->chatService->getChatRoom($roomId, $userId);
-        $messages = $this->chatService->getMessages($roomId, $userId);
-        
-        // Get first unread message ID for scrolling BEFORE marking as read
-        $firstUnreadMessageId = $this->chatService->getFirstUnreadMessageId($roomId, $userId);
-        
-        // Mark all messages in this room as read
-        $this->chatService->markMessagesAsRead($roomId, $userId);
-        
-        $chatRooms = $this->chatService->getUserChatRooms($userId);
-        $unreadCounts = $this->chatService->getUnreadCounts($userId, $chatRooms);
-
-        return view('chat-package::room', compact('chatRoom', 'messages', 'chatRooms', 'unreadCounts', 'firstUnreadMessageId'));
+        // Return JSON response instead of view (API-only mode)
+        return $this->apiGetChatRoom($roomId);
     }
 
     /**
      * Create a new chat room.
+     * 
+     * NOTE: This method is deprecated. Use apiCreateChatRoom() instead.
+     * Web routes are disabled by default - this package is API-only.
      */
-    public function createRoom(CreateChatRoomRequest $request)
+    public function createRoom(CreateChatRoomRequest $request): JsonResponse
     {
-        $chatRoom = $this->chatService->createChatRoom($request->validated(), Auth::id());
-
-        return redirect()->route('chat.show', $chatRoom->id)
-            ->with('success', 'Chat room created successfully!');
+        // Return JSON response instead of redirect (API-only mode)
+        return $this->apiCreateChatRoom($request);
     }
 
     /**
@@ -171,24 +160,15 @@ class ChatController extends Controller
 
     /**
      * Start or continue a peer-to-peer chat with another user.
-     * Finds existing P2P chat or creates a new one, then redirects to chat room.
+     * 
+     * NOTE: This method is deprecated. Use apiStartPeerToPeerChat() instead.
+     * Web routes are disabled by default - this package is API-only.
      */
-    public function startPeerToPeerChat(int $userId)
+    public function startPeerToPeerChat(int $userId): JsonResponse
     {
-        $currentUserId = Auth::id();
-
-        try {
-            $chatRoom = $this->chatService->findOrCreatePeerToPeerChat($currentUserId, $userId);
-            
-            return redirect()->route('chat.show', $chatRoom->id)
-                ->with('success', 'Chat started successfully!');
-        } catch (\InvalidArgumentException $e) {
-            return redirect()->back()
-                ->with('error', $e->getMessage());
-        } catch (\Exception $e) {
-            return redirect()->back()
-                ->with('error', 'Failed to start chat. Please try again.');
-        }
+        // Return JSON response instead of redirect (API-only mode)
+        $request = request();
+        return $this->apiStartPeerToPeerChat($request, $userId);
     }
 
     /**

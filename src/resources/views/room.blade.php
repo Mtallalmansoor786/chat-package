@@ -22,71 +22,13 @@
                 </div>
                 
                 <!-- Chat List -->
-                <div class="flex-grow-1 overflow-auto">
-                    @if($chatRooms->count() > 0)
-                        <div class="list-group list-group-flush">
-                            @foreach($chatRooms as $room)
-                                <a href="{{ route('chat.show', $room->id) }}" 
-                                   class="list-group-item list-group-item-action border-0 px-3 py-3 chat-room-item {{ isset($chatRoom) && $room->id === $chatRoom->id ? 'active' : '' }}">
-                                    <div class="d-flex align-items-center">
-                                        <!-- Avatar -->
-                                        <div class="chat-avatar me-3 position-relative">
-                                            <div class="chat-avatar-circle">
-                                                @php
-                                                    $displayName = $room->getDisplayName(Auth::id());
-                                                    $avatarText = strtoupper(substr($displayName, 0, 2));
-                                                @endphp
-                                                <span class="chat-avatar-text">{{ $avatarText }}</span>
+                <div class="flex-grow-1 overflow-auto" id="chatRoomsSidebar">
+                    <div class="text-center py-5">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Loading...</span>
                                             </div>
+                        <p class="mt-2 text-muted">Loading chats...</p>
                                         </div>
-                                        
-                                        <!-- Chat Info -->
-                                        <div class="flex-grow-1 chat-info">
-                                            <div class="d-flex justify-content-between align-items-start mb-1">
-                                                <h6 class="mb-0 fw-semibold chat-room-name">
-                                                    {{ $displayName }}
-                                                </h6>
-                                                <div class="d-flex align-items-center gap-2">
-                                                    @if(isset($unreadCounts[$room->id]) && $unreadCounts[$room->id] > 0)
-                                                        <span class="unread-badge">{{ $unreadCounts[$room->id] > 99 ? '99+' : $unreadCounts[$room->id] }}</span>
-                                                    @endif
-                                                    <small class="chat-time">
-                                                        {{ $room->updated_at->diffForHumans() }}
-                                                    </small>
-                                                </div>
-                                            </div>
-                                            
-                                            @if($room->messages->count() > 0)
-                                                <p class="mb-0 chat-preview">
-                                                    {{ Str::limit($room->messages->first()->message, 40) }}
-                                                </p>
-                                            @else
-                                                <p class="mb-0 chat-preview text-muted">
-                                                    No messages yet
-                                                </p>
-                                            @endif
-                                            
-                                            <div class="d-flex align-items-center mt-1">
-                                                <span class="chat-meta">
-                                                    <i class="bi bi-people-fill me-1"></i>{{ $room->users->count() }} members
-                                                </span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </a>
-                            @endforeach
-                        </div>
-                    @else
-                        <div class="chat-empty-state">
-                            <div class="chat-empty-icon">
-                                <i class="bi bi-chat-dots"></i>
-                            </div>
-                            <p class="chat-empty-text">No chat rooms yet.</p>
-                            <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#createRoomModal">
-                                <i class="bi bi-plus-circle me-1"></i>Create Room
-                            </button>
-                        </div>
-                    @endif
                 </div>
             </div>
         </div>
@@ -94,63 +36,25 @@
         <!-- Center: Chat Messages Area -->
         <div class="col-md-5 d-flex flex-column" style="height: 100%;">
             <div class="card border-0 h-100 d-flex flex-column">
-                @if(isset($chatRoom) && $chatRoom)
-                    <!-- Chat Header -->
+                <!-- Chat Header (loaded via JS) -->
+                <div id="chatHeader" style="display: none;">
                     <div class="chat-messages-header">
                         <div class="d-flex align-items-center">
                             <div class="chat-header-avatar me-3">
-                                @php
-                                    $chatDisplayName = $chatRoom->getDisplayName(Auth::id());
-                                    $chatAvatarText = strtoupper(substr($chatDisplayName, 0, 2));
-                                @endphp
-                                <span class="chat-header-avatar-text">{{ $chatAvatarText }}</span>
+                                <span class="chat-header-avatar-text" id="chatHeaderAvatar">--</span>
                             </div>
                             <div class="flex-grow-1">
-                                <h6 class="mb-0 fw-bold chat-room-title">{{ $chatDisplayName }}</h6>
-                                @if($chatRoom->description && !$chatRoom->isPeerToPeer())
-                                    <small class="text-muted chat-room-subtitle">{{ Str::limit($chatRoom->description, 50) }}</small>
-                                @endif
+                                <h6 class="mb-0 fw-bold chat-room-title" id="chatRoomTitle">Loading...</h6>
+                                <small class="text-muted chat-room-subtitle" id="chatRoomSubtitle"></small>
+                            </div>
                             </div>
                         </div>
                     </div>
                     
                     <!-- Messages Container -->
-                    <div class="chat-messages-body">
+                <div class="chat-messages-body" id="chatMessagesBody" style="display: none;">
                         <div id="messagesContainer" class="messages-container">
-                            @php
-                                $firstUnreadFound = false;
-                            @endphp
-                            @foreach($messages->reverse() as $message)
-                                @php
-                                    $isUnread = $message->user_id !== Auth::id() && !$message->isReadBy(Auth::id());
-                                    if ($isUnread && !$firstUnreadFound && isset($firstUnreadMessageId) && $message->id == $firstUnreadMessageId) {
-                                        $firstUnreadFound = true;
-                                    }
-                                @endphp
-                                <div class="message-wrapper {{ $message->user_id === Auth::id() ? 'message-own' : 'message-other' }} {{ $isUnread ? 'message-unread' : '' }}" 
-                                     data-message-id="{{ $message->id }}"
-                                     @if($firstUnreadFound && !isset($scrollDone)) id="first-unread-message" @php $scrollDone = true; @endphp @endif>
-                                    @if($firstUnreadFound && !isset($unreadDividerShown))
-                                        <div class="unread-divider">
-                                            <span>Unread messages</span>
-                                        </div>
-                                        @php $unreadDividerShown = true; @endphp
-                                    @endif
-                                    <div class="message-bubble {{ $message->user_id === Auth::id() ? 'message-bubble-own' : 'message-bubble-other' }}">
-                                        @if($message->user_id !== Auth::id())
-                                            <div class="message-sender">
-                                                {{ $message->user->name }}
-                                            </div>
-                                        @endif
-                                        <div class="message-content">
-                                            {{ $message->message }}
-                                        </div>
-                                        <div class="message-time">
-                                            {{ $message->created_at->format('H:i') }}
-                                        </div>
-                                    </div>
-                                </div>
-                            @endforeach
+                        <!-- Messages will be loaded here via JavaScript -->
                         </div>
 
                         <!-- Message Input -->
@@ -167,67 +71,44 @@
                             </form>
                         </div>
                     </div>
-                @else
-                    <!-- No Chat Selected -->
-                    <div class="chat-welcome-screen">
+                
+                <!-- No Chat Selected / Loading -->
+                <div id="chatWelcomeScreen" class="chat-welcome-screen">
                         <div class="chat-welcome-content">
                             <div class="chat-welcome-icon">
                                 <i class="bi bi-chat-dots"></i>
                             </div>
-                            <h3 class="chat-welcome-title">Please select a chat</h3>
-                            <p class="chat-welcome-text">Choose a conversation from the left to start messaging</p>
-                            @if($chatRooms->count() === 0)
-                                <button type="button" class="btn btn-primary btn-lg mt-3" data-bs-toggle="modal" data-bs-target="#createRoomModal">
-                                    <i class="bi bi-plus-circle me-2"></i>Create Your First Chat Room
-                                </button>
-                            @endif
+                        <h3 class="chat-welcome-title" id="welcomeTitle">Loading chat...</h3>
+                        <p class="chat-welcome-text" id="welcomeText">Please wait while we load the chat room.</p>
                         </div>
                     </div>
-                @endif
             </div>
         </div>
 
         <!-- Right Sidebar: Users/Peers -->
         <div class="col-md-4 border-start bg-white" style="height: 100%; overflow-y: auto;">
             <div class="d-flex flex-column h-100">
-                @if(isset($chatRoom) && $chatRoom)
-                    <!-- Peers Header -->
+                <!-- Peers Header (loaded via JS) -->
+                <div id="membersHeader" style="display: none;">
                     <div class="members-header">
                         <h6 class="mb-0 fw-bold">
-                            <i class="bi bi-people-fill me-2"></i>Members ({{ $chatRoom->users->count() }})
+                            <i class="bi bi-people-fill me-2"></i>Members (<span id="membersCount">0</span>)
                         </h6>
                     </div>
-                    
-                    <!-- Peers List -->
-                    <div class="members-list">
-                        @foreach($chatRoom->users as $user)
-                            <div class="member-item">
-                                <div class="d-flex align-items-center">
-                                    <div class="member-avatar">
-                                        <span class="member-avatar-text">{{ strtoupper(substr($user->name, 0, 2)) }}</span>
-                                    </div>
-                                    <div class="flex-grow-1 member-info">
-                                        <div class="member-name">{{ $user->name }}</div>
-                                        <div class="member-email">{{ $user->email }}</div>
-                                    </div>
-                                    <div class="member-status">
-                                        <span class="status-badge status-online" id="status-{{ $user->id }}">
-                                            <span class="status-dot"></span>Online
-                                        </span>
-                                    </div>
-                                </div>
-                            </div>
-                        @endforeach
                     </div>
-                @else
+                    
+                <!-- Peers List (loaded via JS) -->
+                <div id="membersList" class="members-list" style="display: none;">
+                    <!-- Members will be loaded here via JavaScript -->
+                                    </div>
+                
                     <!-- No Chat Selected Message -->
-                    <div class="members-empty">
+                <div id="membersEmpty" class="members-empty">
                         <div class="members-empty-icon">
                             <i class="bi bi-info-circle"></i>
                         </div>
                         <p class="members-empty-text">Select a chat to view members</p>
                     </div>
-                @endif
             </div>
         </div>
     </div>
@@ -241,35 +122,22 @@
                 <h5 class="modal-title" id="createRoomModalLabel">Create New Chat Room</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
-            <form action="{{ route('chat.room.create') }}" method="POST">
-                @csrf
+            <form id="createRoomFormInRoom">
                 <div class="modal-body">
                     <div class="mb-3">
-                        <label for="room_name" class="form-label">Room Name</label>
-                        <input type="text" class="form-control" id="room_name" name="name" required>
+                        <label for="room_name_modal" class="form-label">Room Name</label>
+                        <input type="text" class="form-control" id="room_name_modal" name="name" required>
                     </div>
                     <div class="mb-3">
-                        <label for="room_description" class="form-label">Description (Optional)</label>
-                        <textarea class="form-control" id="room_description" name="description" rows="3"></textarea>
+                        <label for="room_description_modal" class="form-label">Description (Optional)</label>
+                        <textarea class="form-control" id="room_description_modal" name="description" rows="3"></textarea>
                     </div>
                     <div class="mb-3">
-                        <label for="user_ids" class="form-label">Add Users</label>
-                        @php
-                            $userModel = config('auth.providers.users.model', \App\Models\User::class);
-                            $users = $userModel::where('id', '!=', Auth::id())->get();
-                        @endphp
-                        @if($users->count() > 0)
-                            <select class="form-select" id="user_ids" name="user_ids[]" multiple required>
-                                @foreach($users as $user)
-                                    <option value="{{ $user->id }}">{{ $user->name }} ({{ $user->email }})</option>
-                                @endforeach
+                        <label for="user_ids_modal" class="form-label">Add Users</label>
+                        <select class="form-select" id="user_ids_modal" name="user_ids[]" multiple required>
+                            <option value="">Loading users...</option>
                             </select>
                             <small class="form-text text-muted">Hold Ctrl/Cmd to select multiple users</small>
-                        @else
-                            <div class="alert alert-info">
-                                <i class="bi bi-info-circle me-2"></i>No other users available to add to the room.
-                            </div>
-                        @endif
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -287,22 +155,244 @@
     // Track sent message IDs to avoid duplicates
     const sentMessageIds = new Set();
     const currentUserId = {{ Auth::id() }};
+    const apiBaseUrl = '/api/chat';
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
     
-    @if(isset($chatRoom) && $chatRoom)
+    // Get roomId from URL or passed variable
+    const urlParts = window.location.pathname.split('/');
+    const roomId = {{ $roomId ?? 'null' }};
+    let currentRoomId = roomId;
+    let pusher = null;
+    let channel = null;
+    
+    // Load chat rooms for sidebar
+    function loadChatRoomsSidebar() {
+        fetch(`${apiBaseUrl}/rooms`, {
+            headers: {
+                'X-CSRF-TOKEN': csrfToken,
+                'Accept': 'application/json',
+            },
+            credentials: 'same-origin'
+        })
+        .then(response => response.json())
+        .then(data => {
+            const container = document.getElementById('chatRoomsSidebar');
+            const rooms = data.chat_rooms || data.rooms || [];
+            
+            if (rooms.length > 0) {
+                container.innerHTML = '<div class="list-group list-group-flush">' + rooms.map(room => {
+                    const isActive = room.id == currentRoomId ? 'active' : '';
+                    const displayName = room.display_name || room.name || 'Chat Room';
+                    const avatarText = displayName.substring(0, 2).toUpperCase();
+                    const lastMessage = room.last_message ? room.last_message.message.substring(0, 40) : 'No messages yet';
+                    
+                    return `
+                        <a href="/chat/room/${room.id}" class="list-group-item list-group-item-action border-0 px-3 py-3 chat-room-item ${isActive}">
+                            <div class="d-flex align-items-center">
+                                <div class="chat-avatar me-3 position-relative">
+                                    <div class="chat-avatar-circle">
+                                        <span class="chat-avatar-text">${avatarText}</span>
+                                    </div>
+                                </div>
+                                <div class="flex-grow-1 chat-info">
+                                    <div class="d-flex justify-content-between align-items-start mb-1">
+                                        <h6 class="mb-0 fw-semibold chat-room-name">${displayName}</h6>
+                                        <div class="d-flex align-items-center gap-2">
+                                            ${room.unread_count > 0 ? `<span class="unread-badge">${room.unread_count > 99 ? '99+' : room.unread_count}</span>` : ''}
+                                            <small class="chat-time">${new Date(room.updated_at).toLocaleDateString()}</small>
+                                        </div>
+                                    </div>
+                                    <p class="mb-0 chat-preview ${!room.last_message ? 'text-muted' : ''}">${lastMessage}</p>
+                                    <div class="d-flex align-items-center mt-1">
+                                        <span class="chat-meta">
+                                            <i class="bi bi-people-fill me-1"></i>${room.members_count || 0} members
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        </a>
+                    `;
+                }).join('') + '</div>';
+            } else {
+                container.innerHTML = `
+                    <div class="chat-empty-state">
+                        <div class="chat-empty-icon">
+                            <i class="bi bi-chat-dots"></i>
+                        </div>
+                        <p class="chat-empty-text">No chat rooms yet.</p>
+                        <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#createRoomModal">
+                            <i class="bi bi-plus-circle me-1"></i>Create Room
+                        </button>
+                    </div>
+                `;
+            }
+        })
+        .catch(error => {
+            console.error('Error loading chat rooms:', error);
+            document.getElementById('chatRoomsSidebar').innerHTML = `
+                <div class="alert alert-danger m-3">
+                    <i class="bi bi-exclamation-triangle me-2"></i>Failed to load chat rooms.
+                </div>
+            `;
+        });
+    }
+    
+    // Load specific chat room data and messages
+    function loadChatRoom(roomId) {
+        if (!roomId) {
+            document.getElementById('welcomeTitle').textContent = 'Please select a chat';
+            document.getElementById('welcomeText').textContent = 'Choose a conversation from the left to start messaging';
+            return;
+        }
+        
+        currentRoomId = roomId;
+        document.getElementById('welcomeTitle').textContent = 'Loading chat...';
+        document.getElementById('welcomeText').textContent = 'Please wait while we load the chat room.';
+        
+        fetch(`${apiBaseUrl}/rooms/${roomId}`, {
+            headers: {
+                'X-CSRF-TOKEN': csrfToken,
+                'Accept': 'application/json',
+            },
+            credentials: 'same-origin'
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Failed to load chat room');
+            }
+            return response.json();
+        })
+        .then(data => {
+            console.log('Chat room data:', data);
+            
+            if (data.success && data.chat_room) {
+                const room = data.chat_room;
+                const displayName = room.display_name || room.name || 'Chat Room';
+                const avatarText = displayName.substring(0, 2).toUpperCase();
+                
+                // Update header
+                document.getElementById('chatHeaderAvatar').textContent = avatarText;
+                document.getElementById('chatRoomTitle').textContent = displayName;
+                document.getElementById('chatRoomSubtitle').textContent = room.description || '';
+                document.getElementById('chatHeader').style.display = 'block';
+                
+                // Load messages
+                loadMessages(roomId, data.messages || []);
+                
+                // Load members
+                loadMembers(room.peers || []);
+                
+                // Initialize Pusher
+                initializePusher(roomId);
+                
+                // Show chat area, hide welcome
+                document.getElementById('chatMessagesBody').style.display = 'flex';
+                document.getElementById('chatWelcomeScreen').style.display = 'none';
+                
+                // Reload sidebar to update active state
+                loadChatRoomsSidebar();
+            } else {
+                throw new Error(data.error || 'Failed to load chat room');
+            }
+        })
+        .catch(error => {
+            console.error('Error loading chat room:', error);
+            document.getElementById('welcomeTitle').textContent = 'Error loading chat';
+            document.getElementById('welcomeText').textContent = error.message || 'Failed to load chat room. Please try again.';
+        });
+    }
+    
+    // Load messages into container
+    function loadMessages(roomId, messages) {
+        const container = document.getElementById('messagesContainer');
+        
+        if (!messages || messages.length === 0) {
+            container.innerHTML = '<div class="text-center py-5 text-muted">No messages yet. Start the conversation!</div>';
+            return;
+        }
+        
+        container.innerHTML = messages.map(msg => {
+            const isOwn = msg.user_id == currentUserId;
+            const messageTime = new Date(msg.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+            
+            return `
+                <div class="message-wrapper ${isOwn ? 'message-own' : 'message-other'}" data-message-id="${msg.id}">
+                    <div class="message-bubble ${isOwn ? 'message-bubble-own' : 'message-bubble-other'}">
+                        ${!isOwn ? `<div class="message-sender">${msg.user?.name || 'Unknown'}</div>` : ''}
+                        <div class="message-content">${msg.message}</div>
+                        <div class="message-time">${messageTime}</div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+        
+        // Scroll to bottom
+        container.scrollTop = container.scrollHeight;
+    }
+    
+    // Load members/peers
+    function loadMembers(peers) {
+        const container = document.getElementById('membersList');
+        const header = document.getElementById('membersHeader');
+        const empty = document.getElementById('membersEmpty');
+        
+        if (!peers || peers.length === 0) {
+            container.style.display = 'none';
+            header.style.display = 'none';
+            empty.style.display = 'block';
+            return;
+        }
+        
+        document.getElementById('membersCount').textContent = peers.length;
+        container.innerHTML = peers.map(peer => {
+            const avatarText = (peer.name || peer.email || 'U').substring(0, 2).toUpperCase();
+            return `
+                <div class="member-item">
+                    <div class="d-flex align-items-center">
+                        <div class="member-avatar">
+                            <span class="member-avatar-text">${avatarText}</span>
+                        </div>
+                        <div class="flex-grow-1 member-info">
+                            <div class="member-name">${peer.name || 'Unknown'}</div>
+                            <div class="member-email">${peer.email || ''}</div>
+                        </div>
+                        <div class="member-status">
+                            <span class="status-badge status-online" id="status-${peer.id}">
+                                <span class="status-dot"></span>Online
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+        
+        container.style.display = 'block';
+        header.style.display = 'block';
+        empty.style.display = 'none';
+    }
+    
+    // Initialize Pusher for real-time messaging
+    function initializePusher(roomId) {
+        if (pusher) {
+            pusher.disconnect();
+        }
+        
+        if (!roomId) return;
+        
     // Initialize Pusher with authentication
-    const pusher = new Pusher('{{ config('chat-package.pusher.key') }}', {
+        pusher = new Pusher('{{ config('chat-package.pusher.key') }}', {
         cluster: '{{ config('chat-package.pusher.cluster') }}',
         encrypted: true,
         authEndpoint: '/broadcasting/auth',
         auth: {
             headers: {
-                'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                    'X-CSRF-TOKEN': csrfToken
             }
         }
     });
 
     // Subscribe to presence channel
-    const channel = pusher.subscribe('presence-chat-room.{{ $chatRoom->id }}');
+        channel = pusher.subscribe('presence-chat-room.' + roomId);
     
     // Handle subscription events
     channel.bind('pusher:subscription_succeeded', function(members) {
@@ -313,6 +403,25 @@
         console.error('❌ Subscription error:', status);
         alert('Failed to connect to chat. Please refresh the page.');
     });
+
+        // Handle new messages from broadcast
+        channel.bind('message.sent', function(data) {
+            console.log('📨 Message received:', data);
+            const isOwnMessage = data.user_id === currentUserId;
+            addMessageToContainer(data, isOwnMessage);
+        });
+
+        // Handle member added/removed
+        channel.bind('pusher:member_added', function(member) {
+            console.log('👤 Member added:', member);
+            updatePeerStatus(member.id, 'online');
+        });
+
+        channel.bind('pusher:member_removed', function(member) {
+            console.log('👤 Member removed:', member);
+            updatePeerStatus(member.id, 'offline');
+        });
+    }
 
     // Function to add message to container
     function addMessageToContainer(data, isOwnMessage = false) {
@@ -328,7 +437,7 @@
         const messageHtml = `
             <div class="message-wrapper ${isOwnMessage ? 'message-own' : 'message-other'}" data-message-id="${data.id}">
                 <div class="message-bubble ${isOwnMessage ? 'message-bubble-own' : 'message-bubble-other'}">
-                    ${!isOwnMessage ? `<div class="message-sender">${escapeHtml(data.user.name)}</div>` : ''}
+                    ${!isOwnMessage ? `<div class="message-sender">${escapeHtml(data.user?.name || 'Unknown')}</div>` : ''}
                     <div class="message-content">${escapeHtml(data.message)}</div>
                     <div class="message-time">${formatTime(data.created_at)}</div>
                 </div>
@@ -351,24 +460,6 @@
         const date = new Date(dateString);
         return date.toLocaleTimeString('en-US', {hour: '2-digit', minute:'2-digit'});
     }
-
-    // Handle new messages from broadcast
-    channel.bind('message.sent', function(data) {
-        console.log('📨 Message received:', data);
-        const isOwnMessage = data.user_id === currentUserId;
-        addMessageToContainer(data, isOwnMessage);
-    });
-
-    // Handle member added/removed
-    channel.bind('pusher:member_added', function(member) {
-        console.log('👤 Member added:', member);
-        updatePeerStatus(member.id, 'online');
-    });
-
-    channel.bind('pusher:member_removed', function(member) {
-        console.log('👤 Member removed:', member);
-        updatePeerStatus(member.id, 'offline');
-    });
 
     function updatePeerStatus(userId, status) {
         const statusBadge = document.getElementById('status-' + userId);
@@ -400,11 +491,16 @@
             submitButton.disabled = true;
             submitButton.innerHTML = '<i class="bi bi-hourglass-split"></i>';
 
-            fetch('/api/chat/rooms/{{ $chatRoom->id }}/messages', {
+            if (!currentRoomId) {
+                alert('Please select a chat room first');
+                return;
+            }
+            
+            fetch(`${apiBaseUrl}/rooms/${currentRoomId}/messages`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                'X-CSRF-TOKEN': csrfToken,
                 'Accept': 'application/json'
             },
             credentials: 'same-origin',
@@ -453,7 +549,20 @@
         });
         });
     }
-    @endif
+    
+    // Initialize on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        // Load chat rooms sidebar
+        loadChatRoomsSidebar();
+        
+        // Load chat room if roomId is provided
+        if (currentRoomId) {
+            loadChatRoom(currentRoomId);
+        } else {
+            document.getElementById('welcomeTitle').textContent = 'Please select a chat';
+            document.getElementById('welcomeText').textContent = 'Choose a conversation from the left to start messaging';
+        }
+    });
 
     // Auto-scroll to first unread message or bottom on load
     window.addEventListener('load', function() {
@@ -996,4 +1105,61 @@
         }
     }
 </style>
+
+<script>
+// Handle create room form submission via API
+document.addEventListener('DOMContentLoaded', function() {
+    const createRoomForm = document.getElementById('createRoomFormInRoom');
+    if (createRoomForm) {
+        const apiBaseUrl = '/api/chat';
+        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+        
+        createRoomForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const formData = {
+                name: document.getElementById('room_name_modal').value,
+                description: document.getElementById('room_description_modal').value,
+                user_ids: Array.from(document.getElementById('user_ids_modal').selectedOptions).map(opt => opt.value)
+            };
+            
+            fetch(`${apiBaseUrl}/rooms`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': csrfToken,
+                    'Accept': 'application/json',
+                },
+                credentials: 'same-origin',
+                body: JSON.stringify(formData)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Close modal
+                    const modal = bootstrap.Modal.getInstance(document.getElementById('createRoomModal'));
+                    if (modal) modal.hide();
+                    
+                    // Reset form
+                    createRoomForm.reset();
+                    
+                    // Redirect to new room
+                    if (data.room && data.room.id) {
+                        window.location.href = `/chat/room/${data.room.id}`;
+                    } else {
+                        // Reload page to show new room
+                        window.location.reload();
+                    }
+                } else {
+                    alert('Failed to create room: ' + (data.error || 'Unknown error'));
+                }
+            })
+            .catch(error => {
+                console.error('Error creating room:', error);
+                alert('Failed to create room. Please try again.');
+            });
+        });
+    }
+});
+</script>
 @endsection
