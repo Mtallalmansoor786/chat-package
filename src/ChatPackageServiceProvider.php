@@ -4,6 +4,7 @@ namespace ChatPackage\ChatPackage;
 
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Broadcast;
 
 class ChatPackageServiceProvider extends ServiceProvider
 {
@@ -57,6 +58,12 @@ class ChatPackageServiceProvider extends ServiceProvider
         // Load routes
         $this->loadRoutes();
 
+        // Register broadcast authentication routes
+        $this->registerBroadcastRoutes();
+
+        // Load broadcast channels
+        $this->loadBroadcastChannels();
+
         // Publish assets if needed
         $this->publishes([
             __DIR__.'/resources/assets' => public_path('vendor/chat-package'),
@@ -92,6 +99,28 @@ class ChatPackageServiceProvider extends ServiceProvider
         Route::group(['middleware' => ['web', 'auth'], 'prefix' => 'api/chat', 'as' => 'api.chat.'], function () {
             require __DIR__.'/routes/api.php';
         });
+    }
+
+    /**
+     * Register broadcast authentication routes
+     * 
+     * These routes are globally accessible and handle authentication
+     * for real-time broadcasting channels (Pusher, etc.)
+     */
+    protected function registerBroadcastRoutes(): void
+    {
+        // Register broadcast routes with web middleware for session/CSRF support
+        // The routes are available at /broadcasting/auth globally
+        Broadcast::routes(['middleware' => ['web', 'auth']]);
+    }
+
+    /**
+     * Load broadcast channel authorization callbacks
+     */
+    protected function loadBroadcastChannels(): void
+    {
+        // Load channel authorization callbacks from package
+        require __DIR__.'/routes/channels.php';
     }
 }
 
