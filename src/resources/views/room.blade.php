@@ -192,7 +192,9 @@
                     const isActive = room.id == currentRoomId ? 'active' : '';
                     const displayName = room.display_name || room.name || 'Chat Room';
                     const avatarText = displayName.substring(0, 2).toUpperCase();
-                    const lastMessage = room.last_message ? room.last_message.message.substring(0, 40) : 'No messages yet';
+                    const lastMessage = room.last_message ? (room.last_message.message || '').substring(0, 50) : 'No messages yet';
+                    const relativeTime = formatRelativeTime(room.last_message?.created_at || room.updated_at);
+                    const unreadCount = room.unread_count || 0;
                     
                     return `
                         <a href="/chat/room/${room.id}" class="list-group-item list-group-item-action border-0 px-3 py-3 chat-room-item ${isActive}" data-room-id="${room.id}">
@@ -201,21 +203,17 @@
                                     <div class="chat-avatar-circle">
                                         <span class="chat-avatar-text">${avatarText}</span>
                                     </div>
+                                    ${unreadCount > 0 ? '<div class="unread-indicator"></div>' : ''}
                                 </div>
                                 <div class="flex-grow-1 chat-info">
                                     <div class="d-flex justify-content-between align-items-start mb-1">
                                         <h6 class="mb-0 fw-semibold chat-room-name">${displayName}</h6>
                                         <div class="d-flex align-items-center gap-2">
-                                            ${room.unread_count > 0 ? `<span class="unread-badge">${room.unread_count > 99 ? '99+' : room.unread_count}</span>` : ''}
-                                            <small class="chat-time">${new Date(room.updated_at).toLocaleDateString()}</small>
+                                            ${unreadCount > 0 ? `<span class="unread-badge">${unreadCount > 99 ? '99+' : unreadCount}</span>` : ''}
+                                            <small class="chat-time">${relativeTime}</small>
                                         </div>
                                     </div>
-                                    <p class="mb-0 chat-preview ${!room.last_message ? 'text-muted' : ''}">${lastMessage}</p>
-                                    <div class="d-flex align-items-center mt-1">
-                                        <span class="chat-meta">
-                                            <i class="bi bi-people-fill me-1"></i>${room.members_count || 0} members
-                                        </span>
-                                    </div>
+                                    <p class="mb-0 chat-preview ${!room.last_message ? 'text-muted' : ''} ${unreadCount > 0 ? 'fw-semibold' : ''}">${escapeHtml(lastMessage)}</p>
                                 </div>
                             </div>
                         </a>
@@ -303,6 +301,53 @@
         });
     }
     
+    // Update unread count for a specific room in sidebar
+    function updateRoomUnreadCount(roomId, unreadCount) {
+        const chatRoomItem = document.querySelector(`.chat-room-item[data-room-id="${roomId}"]`);
+        if (!chatRoomItem) return;
+        
+        const unreadBadge = chatRoomItem.querySelector('.unread-badge');
+        const unreadIndicator = chatRoomItem.querySelector('.unread-indicator');
+        const chatPreview = chatRoomItem.querySelector('.chat-preview');
+        
+        if (unreadCount > 0) {
+            // Update or create badge
+            if (unreadBadge) {
+                unreadBadge.textContent = unreadCount > 99 ? '99+' : unreadCount;
+            } else {
+                const timeContainer = chatRoomItem.querySelector('.chat-time').parentElement;
+                const badge = document.createElement('span');
+                badge.className = 'unread-badge';
+                badge.textContent = unreadCount > 99 ? '99+' : unreadCount;
+                timeContainer.insertBefore(badge, timeContainer.querySelector('.chat-time'));
+            }
+            
+            // Show indicator
+            if (!unreadIndicator) {
+                const avatarContainer = chatRoomItem.querySelector('.chat-avatar');
+                const indicator = document.createElement('div');
+                indicator.className = 'unread-indicator';
+                avatarContainer.appendChild(indicator);
+            }
+            
+            // Make preview bold
+            if (chatPreview) {
+                chatPreview.classList.add('fw-semibold');
+                chatPreview.style.color = '#1f2937';
+            }
+        } else {
+            // Remove badge and indicator
+            if (unreadBadge) unreadBadge.remove();
+            if (unreadIndicator) unreadIndicator.remove();
+            
+            // Remove bold from preview
+            if (chatPreview) {
+                chatPreview.classList.remove('fw-semibold');
+                chatPreview.style.color = '';
+            }
+        }
+    }
+    
     // Load specific chat room data and messages
     function loadChatRoom(roomId) {
         if (!roomId) {
@@ -358,8 +403,8 @@
                 document.getElementById('chatRoomTitle').textContent = displayName;
                 document.getElementById('chatRoomSubtitle').textContent = room.description || '';
                 
-                // Load messages
-                loadMessages(roomId, data.messages || []);
+                // Load messages with first unread message ID for scrolling
+                loadMessages(roomId, data.messages || [], data.first_unread_message_id || null);
                 
                 // Initialize Pusher
                 initializePusher(roomId);
@@ -372,6 +417,9 @@
                 
                 // Update sidebar active state without reloading
                 updateSidebarActiveState(roomId);
+                
+                // Update unread count to 0 since messages are now marked as read
+                updateRoomUnreadCount(roomId, 0);
             } else {
                 throw new Error(data.error || 'Failed to load chat room');
             }
@@ -387,7 +435,7 @@
     }
     
     // Load messages into container
-    function loadMessages(roomId, messages) {
+    function loadMessages(roomId, messages, firstUnreadMessageId = null) {
         const container = document.getElementById('messagesContainer');
         
         if (!messages || messages.length === 0) {
@@ -398,8 +446,10 @@
         container.innerHTML = messages.map(msg => {
             const isOwn = msg.user_id == currentUserId;
             const messageTime = new Date(msg.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+            const isUnreadMarker = firstUnreadMessageId && msg.id == firstUnreadMessageId;
             
             return `
+                ${isUnreadMarker ? '<div class="unread-divider" id="first-unread-message"><span>Unread messages</span></div>' : ''}
                 <div class="message-wrapper ${isOwn ? 'message-own' : 'message-other'}" data-message-id="${msg.id}">
                     <div class="message-bubble ${isOwn ? 'message-bubble-own' : 'message-bubble-other'}">
                         ${!isOwn ? `<div class="message-sender">${msg.user?.name || 'Unknown'}</div>` : ''}
@@ -410,8 +460,21 @@
             `;
         }).join('');
         
-        // Scroll to bottom
-        container.scrollTop = container.scrollHeight;
+        // Scroll to first unread message if it exists, otherwise scroll to bottom
+        setTimeout(() => {
+            if (firstUnreadMessageId) {
+                const firstUnreadElement = document.getElementById('first-unread-message');
+                if (firstUnreadElement) {
+                    firstUnreadElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                } else {
+                    // If marker not found, scroll to bottom
+                    container.scrollTop = container.scrollHeight;
+                }
+            } else {
+                // No unread messages, scroll to bottom
+                container.scrollTop = container.scrollHeight;
+            }
+        }, 100);
     }
     
     // Toggle right sidebar
@@ -740,6 +803,43 @@
         const date = new Date(dateString);
         return date.toLocaleTimeString('en-US', {hour: '2-digit', minute:'2-digit'});
     }
+    
+    // Helper function to format relative time like WhatsApp
+    function formatRelativeTime(dateString) {
+        if (!dateString) return '';
+        
+        const date = new Date(dateString);
+        const now = new Date();
+        const diffMs = now - date;
+        const diffMins = Math.floor(diffMs / 60000);
+        const diffHours = Math.floor(diffMs / 3600000);
+        const diffDays = Math.floor(diffMs / 86400000);
+        
+        // Same day - show time
+        if (diffDays === 0) {
+            if (diffMins < 1) return 'Just now';
+            if (diffMins < 60) return `${diffMins}m`;
+            if (diffHours < 24) return `${diffHours}h`;
+        }
+        
+        // Yesterday
+        if (diffDays === 1) {
+            return 'Yesterday';
+        }
+        
+        // Within a week - show day name
+        if (diffDays < 7) {
+            return date.toLocaleDateString('en-US', { weekday: 'short' });
+        }
+        
+        // Within current year - show date without year
+        if (date.getFullYear() === now.getFullYear()) {
+            return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        }
+        
+        // Older - show full date
+        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    }
 
     function updatePeerStatus(userId, status) {
         const statusBadge = document.getElementById('status-' + userId);
@@ -963,6 +1063,10 @@
         color: #667eea;
     }
     
+    .chat-avatar {
+        position: relative;
+    }
+    
     .chat-avatar-circle {
         width: 50px;
         height: 50px;
@@ -975,6 +1079,19 @@
         font-weight: 600;
         font-size: 0.9rem;
         box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+    }
+    
+    .unread-indicator {
+        position: absolute;
+        top: -2px;
+        right: -2px;
+        width: 14px;
+        height: 14px;
+        background: #ef4444;
+        border: 2px solid white;
+        border-radius: 50%;
+        box-shadow: 0 2px 4px rgba(239, 68, 68, 0.4);
+        z-index: 1;
     }
     
     .chat-unread-indicator {
@@ -1021,6 +1138,14 @@
         font-size: 0.85rem;
         color: #6b7280;
         line-height: 1.4;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    
+    .chat-preview.fw-semibold {
+        color: #1f2937;
+        font-weight: 600;
     }
     
     .chat-meta {
