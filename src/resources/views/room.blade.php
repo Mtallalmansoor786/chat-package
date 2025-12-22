@@ -443,22 +443,42 @@
             return;
         }
         
-        container.innerHTML = messages.map(msg => {
+        let html = '';
+        let previousDate = null;
+        
+        messages.forEach((msg, index) => {
             const isOwn = msg.user_id == currentUserId;
-            const messageTime = new Date(msg.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+            // JavaScript Date automatically converts UTC to local timezone
+            const messageDate = new Date(msg.created_at);
+            const messageTime = messageDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
             const isUnreadMarker = firstUnreadMessageId && msg.id == firstUnreadMessageId;
             
-            return `
-                ${isUnreadMarker ? '<div class="unread-divider" id="first-unread-message"><span>Unread messages</span></div>' : ''}
-                <div class="message-wrapper ${isOwn ? 'message-own' : 'message-other'}" data-message-id="${msg.id}">
+            // Check if we need a date separator
+            const needsDateSeparator = previousDate === null || isDifferentDay(msg.created_at, previousDate);
+            
+            if (needsDateSeparator) {
+                html += `<div class="date-divider"><span>${formatDateHeader(msg.created_at)}</span></div>`;
+            }
+            
+            // Add unread marker if this is the first unread message
+            if (isUnreadMarker) {
+                html += '<div class="unread-divider" id="first-unread-message"><span>Unread messages</span></div>';
+            }
+            
+            html += `
+                <div class="message-wrapper ${isOwn ? 'message-own' : 'message-other'}" data-message-id="${msg.id}" data-message-date="${msg.created_at}">
                     <div class="message-bubble ${isOwn ? 'message-bubble-own' : 'message-bubble-other'}">
-                        ${!isOwn ? `<div class="message-sender">${msg.user?.name || 'Unknown'}</div>` : ''}
-                        <div class="message-content">${msg.message}</div>
+                        ${!isOwn ? `<div class="message-sender">${escapeHtml(msg.user?.name || 'Unknown')}</div>` : ''}
+                        <div class="message-content">${escapeHtml(msg.message)}</div>
                         <div class="message-time">${messageTime}</div>
                     </div>
                 </div>
             `;
-        }).join('');
+            
+            previousDate = msg.created_at;
+        });
+        
+        container.innerHTML = html;
         
         // Scroll to first unread message if it exists, otherwise scroll to bottom
         setTimeout(() => {
@@ -777,8 +797,33 @@
         const messagesContainer = document.getElementById('messagesContainer');
         if (!messagesContainer) return;
         
-        const messageHtml = `
-            <div class="message-wrapper ${isOwnMessage ? 'message-own' : 'message-other'}" data-message-id="${data.id}">
+        // Check if we need a date separator
+        const lastMessageWrapper = messagesContainer.querySelector('.message-wrapper:last-child');
+        let needsDateSeparator = false;
+        
+        if (lastMessageWrapper) {
+            const lastMessageDate = lastMessageWrapper.getAttribute('data-message-date');
+            if (lastMessageDate) {
+                needsDateSeparator = isDifferentDay(data.created_at, lastMessageDate);
+            } else {
+                // If no date attribute, check the last message's time
+                needsDateSeparator = true; // Safe to add separator if we can't determine
+            }
+        } else {
+            // First message, always add date separator
+            needsDateSeparator = true;
+        }
+        
+        let messageHtml = '';
+        
+        // Add date separator if needed
+        if (needsDateSeparator) {
+            messageHtml += `<div class="date-divider"><span>${formatDateHeader(data.created_at)}</span></div>`;
+        }
+        
+        // Add the message
+        messageHtml += `
+            <div class="message-wrapper ${isOwnMessage ? 'message-own' : 'message-other'}" data-message-id="${data.id}" data-message-date="${data.created_at}">
                 <div class="message-bubble ${isOwnMessage ? 'message-bubble-own' : 'message-bubble-other'}">
                     ${!isOwnMessage ? `<div class="message-sender">${escapeHtml(data.user?.name || 'Unknown')}</div>` : ''}
                     <div class="message-content">${escapeHtml(data.message)}</div>
@@ -798,10 +843,43 @@
         return div.innerHTML;
     }
     
-    // Helper function to format time
+    // Helper function to format time (automatically converts UTC to local timezone)
     function formatTime(dateString) {
-        const date = new Date(dateString);
+        if (!dateString) return '';
+        const date = new Date(dateString); // JavaScript automatically converts UTC to local timezone
         return date.toLocaleTimeString('en-US', {hour: '2-digit', minute:'2-digit'});
+    }
+    
+    // Helper function to format date header (Today, Yesterday, or date)
+    function formatDateHeader(dateString) {
+        if (!dateString) return '';
+        const date = new Date(dateString);
+        const now = new Date();
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const yesterday = new Date(today);
+        yesterday.setDate(yesterday.getDate() - 1);
+        const messageDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+        
+        if (messageDate.getTime() === today.getTime()) {
+            return 'Today';
+        } else if (messageDate.getTime() === yesterday.getTime()) {
+            return 'Yesterday';
+        } else {
+            // Check if it's within the current year
+            if (date.getFullYear() === now.getFullYear()) {
+                return date.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
+            } else {
+                return date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+            }
+        }
+    }
+    
+    // Helper function to check if two dates are on different days
+    function isDifferentDay(dateString1, dateString2) {
+        if (!dateString1 || !dateString2) return true;
+        const date1 = new Date(dateString1);
+        const date2 = new Date(dateString2);
+        return date1.toDateString() !== date2.toDateString();
     }
     
     // Helper function to format relative time like WhatsApp
@@ -1342,6 +1420,42 @@
     
     .message-unread .message-bubble {
         border-left: 3px solid #ef4444;
+    }
+    
+    .date-divider {
+        text-align: center;
+        margin: 1.5rem 0;
+        position: relative;
+    }
+    
+    .date-divider::before,
+    .date-divider::after {
+        content: '';
+        position: absolute;
+        top: 50%;
+        width: 35%;
+        height: 1px;
+        background: #e5e7eb;
+    }
+    
+    .date-divider::before {
+        left: 0;
+    }
+    
+    .date-divider::after {
+        right: 0;
+    }
+    
+    .date-divider span {
+        background: #f3f4f6;
+        padding: 0.4rem 0.9rem;
+        border-radius: 1rem;
+        font-size: 0.75rem;
+        color: #6b7280;
+        font-weight: 500;
+        position: relative;
+        z-index: 1;
+        display: inline-block;
     }
     
     .unread-divider {
