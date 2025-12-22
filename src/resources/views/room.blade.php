@@ -157,10 +157,9 @@
     const apiBaseUrl = '/api/chat';
     const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
     
-    // Get roomId from URL or passed variable
-    const urlParts = window.location.pathname.split('/');
-    const roomId = {{ $roomId ?? 'null' }};
-    let currentRoomId = roomId;
+    // Get roomId from passed variable (for initial load from /chat/room/{id})
+    const roomIdFromVar = {{ $roomId ?? 'null' }};
+    let currentRoomId = roomIdFromVar || null;
     let pusher = null;
     let channel = null;
     let currentRoomData = null; // Store current room data
@@ -197,7 +196,7 @@
                     const unreadCount = room.unread_count || 0;
                     
                     return `
-                        <a href="/chat/room/${room.id}" class="list-group-item list-group-item-action border-0 px-3 py-3 chat-room-item ${isActive}" data-room-id="${room.id}">
+                        <a href="javascript:void(0)" class="list-group-item list-group-item-action border-0 px-3 py-3 chat-room-item ${isActive}" data-room-id="${room.id}">
                             <div class="d-flex align-items-center">
                                 <div class="chat-avatar me-3 position-relative">
                                     <div class="chat-avatar-circle">
@@ -278,8 +277,8 @@
             closeRightSidebar();
         }
         
-        // Update URL without reload
-        window.history.pushState({ roomId: roomId }, '', `/chat/room/${roomId}`);
+        // Update JavaScript variable (no URL changes)
+        currentRoomId = roomId;
         
         // Update active state in sidebar immediately (optimistic update)
         updateSidebarActiveState(roomId);
@@ -293,7 +292,7 @@
         const chatRoomItems = document.querySelectorAll('.chat-room-item');
         chatRoomItems.forEach(item => {
             const itemRoomId = item.getAttribute('data-room-id');
-            if (itemRoomId == roomId) {
+            if (roomId && itemRoomId == roomId) {
                 item.classList.add('active');
             } else {
                 item.classList.remove('active');
@@ -1008,15 +1007,7 @@
         });
     }
     
-    // Handle browser back/forward buttons
-    window.addEventListener('popstate', function(event) {
-        const roomId = event.state ? event.state.roomId : null;
-        if (roomId && roomId != currentRoomId) {
-            currentRoomId = roomId;
-            loadChatRoom(roomId);
-            updateSidebarActiveState(roomId);
-        }
-    });
+    // No URL-based navigation needed - all handled via JavaScript variables
     
     // Initialize on page load
     document.addEventListener('DOMContentLoaded', function() {
@@ -1055,7 +1046,13 @@
             chatArea.classList.add('chat-area-full');
         }
         
-        // Load chat room if roomId is provided
+        // Load chat room if roomId is provided from server variable
+        // If URL is /chat/room/{id}, clean it up to just /chat
+        if (window.location.pathname.includes('/room/')) {
+            // Clean up URL to just /chat without reload
+            window.history.replaceState({}, '', '/chat');
+        }
+        
         if (currentRoomId) {
             loadChatRoom(currentRoomId);
         } else {
@@ -2158,12 +2155,12 @@ document.addEventListener('DOMContentLoaded', function() {
                     // Reset form
                     createRoomForm.reset();
                     
-                    // Redirect to new room
+                    // Switch to new room using JavaScript variable
                     if (data.room && data.room.id) {
-                        window.location.href = `/chat/room/${data.room.id}`;
+                        switchToChat(data.room.id);
                     } else {
-                        // Reload page to show new room
-                        window.location.reload();
+                        // Reload chat rooms list
+                        loadChatRoomsSidebar(false);
                     }
                 } else {
                     alert('Failed to create room: ' + (data.error || 'Unknown error'));
