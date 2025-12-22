@@ -32,3 +32,10 @@ Broadcast::channel('chat-room.{roomId}', function ($user, $roomId) {
     }
 });
 
+// Private channel for user notifications
+// Channel format: private-user.{userId}
+Broadcast::channel('user.{userId}', function ($user, $userId) {
+    // Only allow users to subscribe to their own notification channel
+    return (int) $user->id === (int) $userId;
+});
+

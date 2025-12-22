@@ -3,6 +3,7 @@
 namespace ChatPackage\ChatPackage\Services;
 
 use ChatPackage\ChatPackage\Events\MessageSent;
+use ChatPackage\ChatPackage\Events\NewMessageNotification;
 use ChatPackage\ChatPackage\Exceptions\ChatRoomAccessDeniedException;
 use ChatPackage\ChatPackage\Repositories\Contracts\ChatRoomRepositoryInterface;
 use ChatPackage\ChatPackage\Repositories\Contracts\MessageRepositoryInterface;
@@ -86,8 +87,33 @@ class ChatService implements ChatServiceInterface
 
         $message = $this->messageRepository->create($messageData);
 
-        // Broadcast message via Pusher
+        // Load chat room with users for notifications
+        $chatRoom = $this->chatRoomRepository->findByIdWithRelations($roomId, ['users']);
+
+        // Broadcast message to chat room channel (for active viewers)
         event(new MessageSent($message));
+
+        // Send notification to all recipients (except sender)
+        // Each recipient will receive notification on their private channel
+        $recipients = $chatRoom->users->where('id', '!=', $userId);
+        foreach ($recipients as $recipient) {
+            // Calculate unread count for this specific recipient
+            $readMessageIds = MessageRead::where('user_id', $recipient->id)
+                ->pluck('message_id')
+                ->toArray();
+            
+            $unreadCount = Message::where('chat_room_id', $roomId)
+                ->where('user_id', '!=', $recipient->id)
+                ->whereNotIn('id', $readMessageIds)
+                ->count();
+            
+            // Include the new message in unread count
+            $unreadCount++;
+            
+            // Fire separate notification event for this recipient with their specific unread count
+            // This ensures each user gets their accurate unread count
+            event(new NewMessageNotification($message, $chatRoom, $unreadCount, $recipient->id));
+        }
 
         return $message->load('user');
     }

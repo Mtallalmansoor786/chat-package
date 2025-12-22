@@ -161,9 +161,225 @@
     const roomIdFromVar = {{ $roomId ?? 'null' }};
     let currentRoomId = roomIdFromVar || null;
     let pusher = null;
-    let channel = null;
+    let channel = null; // Current active chat room channel (only subscribed when chat is open)
+    let notificationChannel = null; // User's private notification channel (subscribed on page load)
     let currentRoomData = null; // Store current room data
     let currentPeers = []; // Store current peers/members
+    let notificationPermission = 'default'; // Track notification permission status
+    
+    // Request notification permission
+    function requestNotificationPermission() {
+        if ('Notification' in window && Notification.permission === 'default') {
+            Notification.requestPermission().then(permission => {
+                notificationPermission = permission;
+                if (permission === 'granted') {
+                    console.log('✅ Notification permission granted');
+                } else {
+                    console.log('❌ Notification permission denied');
+                }
+            });
+        } else if ('Notification' in window) {
+            notificationPermission = Notification.permission;
+        }
+    }
+    
+    // Show browser notification for new message
+    function showMessageNotification(roomName, messageText, senderName, roomId) {
+        // Only show notification if:
+        // 1. Permission is granted
+        // 2. The message is not from current user
+        // 3. The room is not currently open
+        if (notificationPermission !== 'granted' || !('Notification' in window)) {
+            return;
+        }
+        
+        if (roomId == currentRoomId) {
+            // Don't show notification for currently open chat
+            return;
+        }
+        
+        const notificationOptions = {
+            body: messageText.length > 100 ? messageText.substring(0, 100) + '...' : messageText,
+            tag: `chat-${roomId}`, // Group notifications by room
+            requireInteraction: false,
+        };
+        
+        // Add icon if available (optional)
+        try {
+            notificationOptions.icon = '/favicon.ico';
+            notificationOptions.badge = '/favicon.ico';
+        } catch (e) {
+            // Icon not available, continue without it
+        }
+        
+        const notification = new Notification(`${senderName} in ${roomName}`, notificationOptions);
+        
+        // Handle notification click - switch to that chat
+        notification.onclick = function() {
+            window.focus();
+            switchToChat(roomId);
+            notification.close();
+        };
+        
+        // Auto-close after 5 seconds
+        setTimeout(() => {
+            notification.close();
+        }, 5000);
+    }
+    
+    // Subscribe to user's private notification channel (ONLY ONE subscription)
+    function subscribeToNotificationChannel() {
+        if (!pusher) {
+            initializePusherInstance();
+        }
+        
+        // Subscribe to private channel for this user
+        notificationChannel = pusher.subscribe('private-user.' + currentUserId);
+        
+        // Listen for new message notifications
+        notificationChannel.bind('new.message', function(data) {
+            handleNewMessageNotification(data);
+        });
+        
+        // Handle subscription success
+        notificationChannel.bind('pusher:subscription_succeeded', function() {
+            console.log('✅ Subscribed to notification channel');
+        });
+        
+        // Handle subscription error
+        notificationChannel.bind('pusher:subscription_error', function(status) {
+            console.error('❌ Notification channel subscription error:', status);
+        });
+    }
+    
+    // Handle new message notification from user's private channel
+    function handleNewMessageNotification(data) {
+        const roomId = data.chat_room_id;
+        const messageData = data.message;
+        const isOwnMessage = messageData.user_id === currentUserId;
+        
+        // Skip own messages for notifications
+        if (isOwnMessage) {
+            return;
+        }
+        
+        // If this is the currently open chat, don't show notification
+        // (message will be handled by the active chat channel)
+        if (roomId == currentRoomId) {
+            return;
+        }
+        
+        // Get room info from sidebar or use data from notification
+        const roomItem = document.querySelector(`.chat-room-item[data-room-id="${roomId}"]`);
+        const roomName = data.chat_room_display_name || data.chat_room_name || 'Chat';
+        const senderName = messageData.user?.name || 'Someone';
+        const messageText = messageData.message || '';
+        const unreadCount = data.unread_count || 0;
+        
+        // Show browser notification
+        showMessageNotification(roomName, messageText, senderName, roomId);
+        
+        // Update sidebar for this room
+        updateSidebarRoomMessage(roomId, {
+            message: messageText,
+            created_at: messageData.created_at,
+            user: messageData.user
+        });
+        
+        // Update unread count with exact count from server
+        updateRoomUnreadCount(roomId, unreadCount);
+    }
+    
+    // Update sidebar room with new message preview
+    function updateSidebarRoomMessage(roomId, messageData) {
+        const roomItem = document.querySelector(`.chat-room-item[data-room-id="${roomId}"]`);
+        if (!roomItem) return;
+        
+        const previewElement = roomItem.querySelector('.chat-preview');
+        const timeElement = roomItem.querySelector('.chat-time');
+        
+        if (previewElement) {
+            const messagePreview = messageData.message.substring(0, 50);
+            previewElement.textContent = messagePreview;
+            previewElement.classList.add('fw-semibold');
+            previewElement.style.color = '#1f2937';
+        }
+        
+        if (timeElement) {
+            timeElement.textContent = formatRelativeTime(messageData.created_at);
+        }
+        
+        // Move room to top of list (optional - you can implement this if needed)
+    }
+    
+    // Increment unread count for a room
+    function incrementUnreadCount(roomId) {
+        const roomItem = document.querySelector(`.chat-room-item[data-room-id="${roomId}"]`);
+        if (!roomItem) return;
+        
+        const unreadBadge = roomItem.querySelector('.unread-badge');
+        const unreadIndicator = roomItem.querySelector('.unread-indicator');
+        const chatPreview = roomItem.querySelector('.chat-preview');
+        
+        // Get current count or default to 0
+        let currentCount = 0;
+        if (unreadBadge) {
+            const badgeText = unreadBadge.textContent;
+            if (badgeText === '99+') {
+                currentCount = 99;
+            } else {
+                currentCount = parseInt(badgeText) || 0;
+            }
+        }
+        
+        const newCount = currentCount + 1;
+        
+        // Update badge
+        if (unreadBadge) {
+            unreadBadge.textContent = newCount > 99 ? '99+' : newCount;
+        } else {
+            // Create badge if it doesn't exist
+            const timeContainer = roomItem.querySelector('.chat-time').parentElement;
+            const badge = document.createElement('span');
+            badge.className = 'unread-badge';
+            badge.textContent = newCount > 99 ? '99+' : newCount;
+            timeContainer.insertBefore(badge, timeContainer.querySelector('.chat-time'));
+        }
+        
+        // Show indicator if not already shown
+        if (!unreadIndicator) {
+            const avatarContainer = roomItem.querySelector('.chat-avatar');
+            const indicator = document.createElement('div');
+            indicator.className = 'unread-indicator';
+            avatarContainer.appendChild(indicator);
+        }
+        
+        // Make preview bold
+        if (chatPreview) {
+            chatPreview.classList.add('fw-semibold');
+            chatPreview.style.color = '#1f2937';
+        }
+    }
+    
+    // Initialize Pusher instance (separate from room-specific initialization)
+    function initializePusherInstance() {
+        if (pusher) {
+            return pusher;
+        }
+        
+        pusher = new Pusher('{{ config('chat-package.pusher.key') }}', {
+            cluster: '{{ config('chat-package.pusher.cluster') }}',
+            encrypted: true,
+            authEndpoint: '/broadcasting/auth',
+            auth: {
+                headers: {
+                    'X-CSRF-TOKEN': csrfToken
+                }
+            }
+        });
+        
+        return pusher;
+    }
     
     // Load chat rooms for sidebar
     function loadChatRoomsSidebar(showLoader = false) {
@@ -277,13 +493,20 @@
             closeRightSidebar();
         }
         
+        // Unsubscribe from previous chat room channel
+        if (channel) {
+            channel.unbind_all();
+            channel.unsubscribe();
+            channel = null;
+        }
+        
         // Update JavaScript variable (no URL changes)
         currentRoomId = roomId;
         
         // Update active state in sidebar immediately (optimistic update)
         updateSidebarActiveState(roomId);
         
-        // Load the new chat room
+        // Load the new chat room (this will subscribe to the new chat room channel)
         loadChatRoom(roomId);
     }
     
@@ -297,6 +520,27 @@
             } else {
                 item.classList.remove('active');
             }
+        });
+    }
+    
+    // Mark messages as read via API
+    function markMessagesAsRead(roomId) {
+        fetch(`${apiBaseUrl}/rooms/${roomId}/mark-read`, {
+            method: 'POST',
+            headers: {
+                'X-CSRF-TOKEN': csrfToken,
+                'Accept': 'application/json',
+            },
+            credentials: 'same-origin'
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                console.log('✅ Messages marked as read');
+            }
+        })
+        .catch(error => {
+            console.error('Error marking messages as read:', error);
         });
     }
     
@@ -416,6 +660,9 @@
                 
                 // Update sidebar active state without reloading
                 updateSidebarActiveState(roomId);
+                
+                // Mark messages as read when opening the chat
+                markMessagesAsRead(roomId);
                 
                 // Update unread count to 0 since messages are now marked as read
                 updateRoomUnreadCount(roomId, 0);
@@ -733,44 +980,44 @@
         return date.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
     }
     
-    // Initialize Pusher for real-time messaging
+    // Initialize Pusher for real-time messaging (ONLY when user opens a specific chat)
     function initializePusher(roomId) {
-        if (pusher) {
-            pusher.disconnect();
+        if (!pusher) {
+            initializePusherInstance();
         }
         
         if (!roomId) return;
         
-    // Initialize Pusher with authentication
-        pusher = new Pusher('{{ config('chat-package.pusher.key') }}', {
-        cluster: '{{ config('chat-package.pusher.cluster') }}',
-        encrypted: true,
-        authEndpoint: '/broadcasting/auth',
-        auth: {
-            headers: {
-                    'X-CSRF-TOKEN': csrfToken
-            }
+        // Unsubscribe from previous active channel if exists
+        if (channel) {
+            channel.unbind_all();
+            channel.unsubscribe();
+            channel = null;
         }
-    });
 
-    // Subscribe to presence channel
+        // Subscribe to presence channel ONLY for the active chat
         channel = pusher.subscribe('presence-chat-room.' + roomId);
     
-    // Handle subscription events
-    channel.bind('pusher:subscription_succeeded', function(members) {
-        console.log('✅ Successfully subscribed to channel');
-    });
+        // Handle subscription events
+        channel.bind('pusher:subscription_succeeded', function(members) {
+            console.log('✅ Successfully subscribed to active chat channel:', roomId);
+        });
     
-    channel.bind('pusher:subscription_error', function(status) {
-        console.error('❌ Subscription error:', status);
-        alert('Failed to connect to chat. Please refresh the page.');
-    });
+        channel.bind('pusher:subscription_error', function(status) {
+            console.error('❌ Subscription error:', status);
+            alert('Failed to connect to chat. Please refresh the page.');
+        });
 
-        // Handle new messages from broadcast
+        // Handle new messages from broadcast (for active chat only)
         channel.bind('message.sent', function(data) {
-            console.log('📨 Message received:', data);
+            console.log('📨 Message received in active chat:', data);
             const isOwnMessage = data.user_id === currentUserId;
             addMessageToContainer(data, isOwnMessage);
+            
+            // Mark message as read if it's from another user (user is viewing the chat)
+            if (!isOwnMessage) {
+                markMessagesAsRead(roomId);
+            }
         });
 
         // Handle member added/removed
@@ -1011,6 +1258,15 @@
     
     // Initialize on page load
     document.addEventListener('DOMContentLoaded', function() {
+        // Request notification permission
+        requestNotificationPermission();
+        
+        // Initialize Pusher instance
+        initializePusherInstance();
+        
+        // Subscribe to user's private notification channel (ONLY ONE subscription)
+        subscribeToNotificationChannel();
+        
         // Load chat rooms sidebar with loader on initial load
         loadChatRoomsSidebar(true);
         
