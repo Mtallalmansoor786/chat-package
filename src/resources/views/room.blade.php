@@ -241,14 +241,33 @@
             handleNewMessageNotification(data);
         });
         
+        // Listen for user status changes (online/offline)
+        notificationChannel.bind('user.status.changed', function(data) {
+            handleUserStatusChange(data);
+        });
+        
         // Handle subscription success
         notificationChannel.bind('pusher:subscription_succeeded', function() {
             console.log('✅ Subscribed to notification channel');
+            // Update user status to online when connected
+            updateUserStatus('online');
         });
         
         // Handle subscription error
         notificationChannel.bind('pusher:subscription_error', function(status) {
             console.error('❌ Notification channel subscription error:', status);
+        });
+        
+        // Update status to offline when page is about to unload
+        window.addEventListener('beforeunload', function() {
+            updateUserStatus('offline');
+        });
+        
+        // Update status to online when page becomes visible
+        document.addEventListener('visibilitychange', function() {
+            if (document.visibilityState === 'visible') {
+                updateUserStatus('online');
+            }
         });
     }
     
@@ -288,6 +307,114 @@
         
         // Update unread count with exact count from server
         updateRoomUnreadCount(roomId, unreadCount);
+    }
+    
+    // Handle user status change (online/offline)
+    function handleUserStatusChange(data) {
+        const userId = data.user_id;
+        const status = data.status; // 'online' or 'offline'
+        const lastSeenAt = data.last_seen_at;
+        
+        // Update peer data with new last_seen_at
+        const peer = currentPeers.find(p => p.id == userId);
+        if (peer) {
+            peer.last_seen_at = lastSeenAt;
+        }
+        
+        // Update status in active chat if this user is a peer
+        if (currentRoomId && currentPeers.some(peer => peer.id == userId)) {
+            updatePeerStatus(userId, status, lastSeenAt);
+            
+            // Update chat header if this is the peer in P2P chat
+            if (currentRoomData && currentRoomData.is_peer_to_peer && userId != currentUserId) {
+                const otherPeer = currentPeers.find(p => p.id == userId);
+                if (otherPeer) {
+                    updateChatHeaderStatus(otherPeer);
+                }
+            }
+        }
+        
+        // Update status in sidebar members list if visible
+        updateMemberStatusInSidebar(userId, status, lastSeenAt);
+    }
+    
+    // Update user status via API
+    function updateUserStatus(status) {
+        fetch(`${apiBaseUrl}/user/status`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': csrfToken,
+                'Accept': 'application/json',
+            },
+            credentials: 'same-origin',
+            body: JSON.stringify({ status: status })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                console.log(`✅ User status updated to: ${status}`);
+            }
+        })
+        .catch(error => {
+            console.error('Error updating user status:', error);
+        });
+    }
+    
+    // Update member status in sidebar
+    function updateMemberStatusInSidebar(userId, status, lastSeenAt) {
+        const memberItem = document.querySelector(`.member-item-clickable[data-peer-id="${userId}"]`);
+        if (!memberItem) return;
+        
+        const statusElement = memberItem.querySelector('.member-status-text');
+        if (!statusElement) {
+            // Create status element if it doesn't exist
+            const memberInfo = memberItem.querySelector('.member-info');
+            if (memberInfo) {
+                const statusDiv = document.createElement('div');
+                statusDiv.className = 'member-status-text';
+                memberInfo.appendChild(statusDiv);
+                updateStatusText(statusDiv, status, lastSeenAt);
+            }
+        } else {
+            updateStatusText(statusElement, status, lastSeenAt);
+        }
+    }
+    
+    // Update status text element
+    function updateStatusText(element, status, lastSeenAt) {
+        if (status === 'online') {
+            element.innerHTML = '<span class="text-success"><i class="bi bi-circle-fill" style="font-size: 0.6rem;"></i> online</span>';
+        } else {
+            const lastSeenText = formatLastSeen(lastSeenAt);
+            element.innerHTML = `<span class="text-muted">last seen ${lastSeenText}</span>`;
+        }
+    }
+    
+    // Format last seen time
+    function formatLastSeen(lastSeenAt) {
+        if (!lastSeenAt) return 'Offline';
+        
+        const lastSeen = new Date(lastSeenAt);
+        const now = new Date();
+        const diffMs = now - lastSeen;
+        const diffMins = Math.floor(diffMs / 60000);
+        const diffHours = Math.floor(diffMs / 3600000);
+        const diffDays = Math.floor(diffMs / 86400000);
+        
+        if (diffMins < 1) {
+            return 'Just now';
+        } else if (diffMins < 60) {
+            return `${diffMins} minute${diffMins > 1 ? 's' : ''} ago`;
+        } else if (diffHours < 24) {
+            return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
+        } else if (diffDays === 1) {
+            return 'Yesterday';
+        } else if (diffDays < 7) {
+            return `${diffDays} days ago`;
+        } else {
+            return lastSeen.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: lastSeen.getFullYear() !== now.getFullYear() ? 'numeric' : undefined });
+        }
     }
     
     // Update sidebar room with new message preview
@@ -644,7 +771,20 @@
                 // Update header
                 document.getElementById('chatHeaderAvatar').textContent = avatarText;
                 document.getElementById('chatRoomTitle').textContent = displayName;
-                document.getElementById('chatRoomSubtitle').textContent = room.description || '';
+                
+                // Update subtitle with online status or last seen (for P2P) or description (for groups)
+                if (room.is_peer_to_peer) {
+                    // For P2P chats, show online status or last seen
+                    const otherPeer = currentPeers.find(peer => peer.id != currentUserId);
+                    if (otherPeer) {
+                        updateChatHeaderStatus(otherPeer);
+                    } else {
+                        document.getElementById('chatRoomSubtitle').textContent = '';
+                    }
+                } else {
+                    // For group chats, show description
+                    document.getElementById('chatRoomSubtitle').textContent = room.description || '';
+                }
                 
                 // Load messages with first unread message ID for scrolling
                 loadMessages(roomId, data.messages || [], data.first_unread_message_id || null);
@@ -817,15 +957,20 @@
         
         titleElement.textContent = 'Contact Info';
         const avatarText = (otherPeer.name || otherPeer.email || 'U').substring(0, 2).toUpperCase();
+        const isOnline = channel && channel.members && channel.members.get(otherPeer.id);
+        const lastSeenAt = otherPeer.last_seen_at || null;
+        const statusText = isOnline ? '<span class="text-success"><i class="bi bi-circle-fill" style="font-size: 0.6rem;"></i> Online</span>' : `<span class="text-muted">${formatLastSeen(lastSeenAt)}</span>`;
         
         container.innerHTML = `
             <div class="sidebar-content-wrapper">
                 <div class="user-details-header">
-                    <div class="user-details-avatar-large">
+                    <div class="user-details-avatar-large position-relative">
                         <span class="user-details-avatar-text-large">${avatarText}</span>
+                        ${isOnline ? '<span class="user-online-indicator-large"></span>' : ''}
                     </div>
                     <h5 class="user-details-name">${escapeHtml(otherPeer.name || 'Unknown')}</h5>
                     <p class="user-details-email">${escapeHtml(otherPeer.email || '')}</p>
+                    <p class="user-details-status">${statusText}</p>
                 </div>
                 <div class="user-details-body">
                     <div class="user-details-section">
@@ -879,17 +1024,25 @@
                             ${currentPeers.map(peer => {
                                 const peerAvatarText = (peer.name || peer.email || 'U').substring(0, 2).toUpperCase();
                                 const isCurrentUser = peer.id == currentUserId;
+                                const lastSeenAt = peer.last_seen_at || null;
+                                const isOnline = channel && channel.members && channel.members.get(peer.id);
+                                const statusText = isOnline 
+                                    ? '<span class="text-success"><i class="bi bi-circle-fill" style="font-size: 0.6rem;"></i> online</span>' 
+                                    : `<span class="text-muted">last seen ${formatLastSeen(lastSeenAt)}</span>`;
+                                
                                 return `
                                     <div class="member-item-clickable" data-peer-id="${peer.id}" style="cursor: pointer;">
                                         <div class="d-flex align-items-center">
-                                            <div class="member-avatar">
+                                            <div class="member-avatar position-relative">
                                                 <span class="member-avatar-text">${peerAvatarText}</span>
+                                                ${isOnline ? '<span class="member-online-indicator"></span>' : ''}
                                             </div>
                                             <div class="flex-grow-1 member-info">
                                                 <div class="member-name">
                                                     ${escapeHtml(peer.name || 'Unknown')} ${isCurrentUser ? '<span class="text-muted">(You)</span>' : ''}
                                                 </div>
                                                 <div class="member-email">${escapeHtml(peer.email || '')}</div>
+                                                <div class="member-status-text">${statusText}</div>
                                             </div>
                                             <div class="member-arrow">
                                                 <i class="bi bi-chevron-right"></i>
@@ -924,15 +1077,20 @@
         `;
         
         const avatarText = (peer.name || peer.email || 'U').substring(0, 2).toUpperCase();
+        const isOnline = channel && channel.members && channel.members.get(peer.id);
+        const lastSeenAt = peer.last_seen_at || null;
+        const statusText = isOnline ? '<span class="text-success"><i class="bi bi-circle-fill" style="font-size: 0.6rem;"></i> Online</span>' : `<span class="text-muted">${formatLastSeen(lastSeenAt)}</span>`;
         
         sidebarContent.innerHTML = `
             <div class="sidebar-content-wrapper">
                 <div class="user-details-header">
-                    <div class="user-details-avatar-large">
+                    <div class="user-details-avatar-large position-relative">
                         <span class="user-details-avatar-text-large">${avatarText}</span>
+                        ${isOnline ? '<span class="user-online-indicator-large"></span>' : ''}
                     </div>
                     <h5 class="user-details-name">${escapeHtml(peer.name || 'Unknown')}</h5>
                     <p class="user-details-email">${escapeHtml(peer.email || '')}</p>
+                    <p class="user-details-status">${statusText}</p>
                 </div>
                 <div class="user-details-body">
                     <div class="user-details-section">
@@ -1001,6 +1159,36 @@
         // Handle subscription events
         channel.bind('pusher:subscription_succeeded', function(members) {
             console.log('✅ Successfully subscribed to active chat channel:', roomId);
+            // Update online status for all members in this chat
+            if (members && members.members) {
+                Object.keys(members.members).forEach(memberId => {
+                    const memberIdInt = parseInt(memberId);
+                    if (memberIdInt != currentUserId) {
+                        const peer = currentPeers.find(p => p.id == memberIdInt);
+                        if (peer) {
+                            updatePeerStatus(memberIdInt, 'online', peer.last_seen_at);
+                        } else {
+                            updatePeerStatus(memberIdInt, 'online');
+                        }
+                    }
+                });
+            }
+            
+            // Update chat header status for P2P chats
+            if (currentRoomData && currentRoomData.is_peer_to_peer) {
+                const otherPeer = currentPeers.find(peer => peer.id != currentUserId);
+                if (otherPeer) {
+                    // Check if peer is in members list
+                    const memberIdStr = String(otherPeer.id);
+                    const isOnline = members.members && members.members[memberIdStr];
+                    if (isOnline) {
+                        updateChatHeaderStatus(otherPeer);
+                    } else {
+                        // Peer is offline, show last seen
+                        updateChatHeaderStatus(otherPeer);
+                    }
+                }
+            }
         });
     
         channel.bind('pusher:subscription_error', function(status) {
@@ -1023,12 +1211,30 @@
         // Handle member added/removed
         channel.bind('pusher:member_added', function(member) {
             console.log('👤 Member added:', member);
-            updatePeerStatus(member.id, 'online');
+            const peer = currentPeers.find(p => p.id == member.id);
+            updatePeerStatus(member.id, 'online', peer?.last_seen_at);
+            
+            // Update chat header if this is the peer in P2P chat
+            if (currentRoomData && currentRoomData.is_peer_to_peer && member.id != currentUserId) {
+                const otherPeer = currentPeers.find(p => p.id == member.id);
+                if (otherPeer) {
+                    updateChatHeaderStatus(otherPeer);
+                }
+            }
         });
 
         channel.bind('pusher:member_removed', function(member) {
             console.log('👤 Member removed:', member);
-            updatePeerStatus(member.id, 'offline');
+            const peer = currentPeers.find(p => p.id == member.id);
+            updatePeerStatus(member.id, 'offline', peer?.last_seen_at);
+            
+            // Update chat header if this is the peer in P2P chat
+            if (currentRoomData && currentRoomData.is_peer_to_peer && member.id != currentUserId) {
+                const otherPeer = currentPeers.find(p => p.id == member.id);
+                if (otherPeer) {
+                    updateChatHeaderStatus(otherPeer);
+                }
+            }
         });
     }
 
@@ -1165,7 +1371,30 @@
         return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     }
 
-    function updatePeerStatus(userId, status) {
+    // Update chat header status (WhatsApp style - under the name)
+    function updateChatHeaderStatus(peer) {
+        if (!currentRoomData || !currentRoomData.is_peer_to_peer) {
+            return; // Only for P2P chats
+        }
+        
+        const subtitleElement = document.getElementById('chatRoomSubtitle');
+        if (!subtitleElement) return;
+        
+        // Check if peer is online in current channel
+        const isOnline = channel && channel.members && channel.members.get(peer.id);
+        const lastSeenAt = peer.last_seen_at || null;
+        
+        if (isOnline) {
+            subtitleElement.innerHTML = '<span class="text-success"><i class="bi bi-circle-fill" style="font-size: 0.5rem;"></i> online</span>';
+            subtitleElement.className = 'text-muted chat-room-subtitle';
+        } else {
+            const lastSeenText = formatLastSeen(lastSeenAt);
+            subtitleElement.textContent = lastSeenText;
+            subtitleElement.className = 'text-muted chat-room-subtitle';
+        }
+    }
+    
+    function updatePeerStatus(userId, status, lastSeenAt = null) {
         const statusBadge = document.getElementById('status-' + userId);
         if (statusBadge) {
             if (status === 'online') {
@@ -1173,7 +1402,17 @@
                 statusBadge.innerHTML = '<span class="status-dot"></span>Online';
             } else {
                 statusBadge.className = 'status-badge status-offline';
-                statusBadge.innerHTML = '<span class="status-dot"></span>Offline';
+                const lastSeenText = lastSeenAt ? formatLastSeen(lastSeenAt) : 'Offline';
+                statusBadge.innerHTML = `<span class="status-dot"></span>${lastSeenText}`;
+            }
+        }
+        
+        // Also update chat header if this is the peer in P2P chat
+        if (currentRoomData && currentRoomData.is_peer_to_peer) {
+            const otherPeer = currentPeers.find(peer => peer.id == userId);
+            if (otherPeer) {
+                otherPeer.last_seen_at = lastSeenAt;
+                updateChatHeaderStatus(otherPeer);
             }
         }
     }
@@ -1869,6 +2108,41 @@
         box-shadow: 0 2px 6px rgba(102, 126, 234, 0.3);
         margin-right: 1rem;
         flex-shrink: 0;
+        position: relative;
+    }
+    
+    .member-online-indicator {
+        position: absolute;
+        bottom: 0;
+        right: 0;
+        width: 12px;
+        height: 12px;
+        background: #10b981;
+        border: 2px solid white;
+        border-radius: 50%;
+        box-shadow: 0 2px 4px rgba(16, 185, 129, 0.4);
+    }
+    
+    .user-online-indicator-large {
+        position: absolute;
+        bottom: 5px;
+        right: 5px;
+        width: 16px;
+        height: 16px;
+        background: #10b981;
+        border: 3px solid white;
+        border-radius: 50%;
+        box-shadow: 0 2px 6px rgba(16, 185, 129, 0.5);
+    }
+    
+    .member-status-text {
+        font-size: 0.75rem;
+        margin-top: 0.25rem;
+    }
+    
+    .user-details-status {
+        font-size: 0.85rem;
+        margin-top: 0.5rem;
     }
     
     .member-info {

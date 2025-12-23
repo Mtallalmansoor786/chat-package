@@ -353,12 +353,13 @@ class ChatController extends Controller
                 ];
             });
 
-            // Format peers
+            // Format peers with last_seen_at
             $formattedPeers = $chatRoom->users->map(function ($user) {
                 return [
                     'id' => $user->id,
                     'name' => $user->name,
                     'email' => $user->email,
+                    'last_seen_at' => $user->last_seen_at?->toDateTimeString(),
                 ];
             });
 
@@ -596,6 +597,7 @@ class ChatController extends Controller
                     'id' => $user->id,
                     'name' => $user->name,
                     'email' => $user->email,
+                    'last_seen_at' => $user->last_seen_at?->toDateTimeString(),
                 ];
             });
 
@@ -710,6 +712,38 @@ class ChatController extends Controller
             return response()->json([
                 'success' => false,
                 'error' => 'Failed to start chat.',
+                'message' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * API: Update user status (online/offline).
+     */
+    public function apiUpdateUserStatus(): JsonResponse
+    {
+        try {
+            $userId = Auth::id();
+            $status = request()->input('status', 'online'); // 'online' or 'offline'
+            
+            if (!in_array($status, ['online', 'offline'])) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Invalid status. Must be "online" or "offline".',
+                ], 400);
+            }
+            
+            $this->chatService->updateUserLastSeen($userId, $status);
+            
+            return response()->json([
+                'success' => true,
+                'message' => 'User status updated.',
+                'status' => $status,
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'error' => 'Failed to update user status.',
                 'message' => $e->getMessage(),
             ], 500);
         }

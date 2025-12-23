@@ -4,6 +4,7 @@ namespace ChatPackage\ChatPackage\Services;
 
 use ChatPackage\ChatPackage\Events\MessageSent;
 use ChatPackage\ChatPackage\Events\NewMessageNotification;
+use ChatPackage\ChatPackage\Events\UserStatusChanged;
 use ChatPackage\ChatPackage\Exceptions\ChatRoomAccessDeniedException;
 use ChatPackage\ChatPackage\Repositories\Contracts\ChatRoomRepositoryInterface;
 use ChatPackage\ChatPackage\Repositories\Contracts\MessageRepositoryInterface;
@@ -246,6 +247,42 @@ class ChatService implements ChatServiceInterface
         }
 
         return $this->chatRoomRepository->findPeerToPeerChat($currentUserId, $otherUserId);
+    }
+
+    /**
+     * Update user's last seen timestamp and broadcast status change.
+     */
+    public function updateUserLastSeen(int $userId, string $status = 'online'): void
+    {
+        $userModel = config('auth.providers.users.model', \App\Models\User::class);
+        $user = $userModel::find($userId);
+        
+        if (!$user) {
+            return;
+        }
+        
+        // Update last_seen_at
+        if ($status === 'online') {
+            $user->last_seen_at = now();
+        } else {
+            // For offline, keep the last_seen_at as is (don't update)
+            // This way we know when they were last online
+        }
+        $user->save();
+        
+        // Get all chat rooms for this user to notify peers
+        $chatRooms = $this->getUserChatRooms($userId);
+        $chatRoomIds = $chatRooms->pluck('id')->toArray();
+        
+        // Broadcast status change to users in the same chat rooms
+        if (!empty($chatRoomIds)) {
+            event(new UserStatusChanged(
+                $userId,
+                $status,
+                $user->last_seen_at?->toDateTimeString(),
+                $chatRoomIds
+            ));
+        }
     }
 }
 

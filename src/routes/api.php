@@ -51,3 +51,6 @@ Route::get('/p2p/{userId}', [ChatController::class, 'apiGetPeerToPeerChatInfo'])
 Route::post('/p2p/{userId}/message', [ChatController::class, 'apiSendPeerToPeerMessage'])->name('p2p.message');
 Route::post('/p2p/{userId}/start', [ChatController::class, 'apiStartPeerToPeerChat'])->name('p2p.start');
 
+// User status endpoints
+Route::post('/user/status', [ChatController::class, 'apiUpdateUserStatus'])->name('user.status');
+
